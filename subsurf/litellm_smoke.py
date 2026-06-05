@@ -78,7 +78,7 @@ def main() -> int:
         token_path = Path(settings.oauth_token_path).expanduser()
         if not token_path.exists() or not token_path.read_text().strip():
             print(f"missing OAuth token file: {token_path}")
-            print("run `subsurf-wizard` or `subsurf-bridge --once` first")
+            print("run `subsurf-setup` or `subsurf-wizard` first")
             return 2
         register_subsurf_provider()
         mode = "live"

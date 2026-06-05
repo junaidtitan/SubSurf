@@ -9,6 +9,11 @@ from pathlib import Path
 from subsurf.config import SubSurfSettings, get_settings
 
 
+DEFAULT_INSTALL_ID_FILE = "~/.config/subsurf/install_id"
+DEFAULT_INSTALLS_DIR = "~/.config/subsurf/installs"
+DEFAULT_TOKEN_FILE = "~/.config/subsurf/oauth_token"
+
+
 PYTHON_EXAMPLE = '''"""Minimal SubSurf attachment example.
 
 Install SubSurf in the app environment, load `.env.subsurf` however your app
@@ -102,6 +107,18 @@ def token_path_for_account(account_id: str | None, base_token_file: str) -> Path
     return base
 
 
+def load_existing_install_id(path: str | Path | None = None) -> str | None:
+    install_id_path = Path(path or DEFAULT_INSTALL_ID_FILE).expanduser()
+    if not install_id_path.exists():
+        return None
+    value = install_id_path.read_text().strip()
+    return value or None
+
+
+def default_token_file_for_account(account_id: str) -> str:
+    return str(Path(DEFAULT_INSTALLS_DIR).expanduser() / account_id / "oauth_token")
+
+
 def build_env(settings: SubSurfSettings, token_path: Path) -> dict[str, str]:
     return {
         "SUBSURF_OAUTH_TOKEN_PATH": str(token_path),
@@ -118,17 +135,23 @@ def build_attach_plan(
     app_dir: str | Path,
     *,
     account_id: str | None = None,
-    token_file: str = "~/.config/subsurf/oauth_token",
+    token_file: str | None = None,
     env_name: str = ".env.subsurf",
     write_examples: bool = True,
     settings: SubSurfSettings | None = None,
 ) -> AttachPlan:
     cfg = settings or get_settings()
     root = Path(app_dir).expanduser().resolve()
+    resolved_account_id = account_id or load_existing_install_id()
+    resolved_token_file = token_file or (
+        default_token_file_for_account(resolved_account_id)
+        if resolved_account_id
+        else DEFAULT_TOKEN_FILE
+    )
     return AttachPlan(
         app_dir=root,
         env_file=root / env_name,
-        token_path=token_path_for_account(account_id, token_file),
+        token_path=token_path_for_account(resolved_account_id, resolved_token_file),
         model=cfg.reasoning_model,
         write_examples=write_examples,
     )
@@ -181,14 +204,14 @@ def print_attach_instructions(plan: AttachPlan) -> None:
     print("  client = anthropic.AsyncAnthropic(auth_token=token, default_headers=CC_HEADERS)")
     print()
     print("Keepalive requirement:")
-    print("  Keep `subsurf-bridge --interval 60` or `subsurf-wizard --start-daemon` running.")
+    print("  Keep the wizard-started daemon running; check with `subsurf-wizard --status`.")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Attach SubSurf OAuth to another app")
     parser.add_argument("--app-dir", default=".", help="application directory to write into")
     parser.add_argument("--account-id", default=None, help="use oauth_token_<account-id>")
-    parser.add_argument("--token-file", default="~/.config/subsurf/oauth_token")
+    parser.add_argument("--token-file")
     parser.add_argument("--env-name", default=".env.subsurf")
     parser.add_argument("--no-examples", action="store_true")
     parser.add_argument("--overwrite", action="store_true")

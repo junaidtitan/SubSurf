@@ -16,6 +16,8 @@ from subsurf.attach import build_attach_plan, print_attach_instructions, write_a
 
 
 DEFAULT_CONFIG_ROOT = "~/.claude-subsurf"
+DEFAULT_STATE_ROOT = "~/.config/subsurf"
+DEFAULT_INSTALLS_DIR = f"{DEFAULT_STATE_ROOT}/installs"
 DEFAULT_INSTALL_ID_FILE = "~/.config/subsurf/install_id"
 DEFAULT_ATTACH_DIR = "sample-app"
 DEFAULT_TOKEN_FILE = "~/.config/subsurf/oauth_token"
@@ -83,16 +85,43 @@ def check_prereqs() -> None:
 
 def load_or_create_install_id(path: str | Path = DEFAULT_INSTALL_ID_FILE) -> str:
     install_id_path = Path(path).expanduser()
-    if install_id_path.exists():
-        value = install_id_path.read_text().strip()
-        if value:
-            return value
+    existing = load_existing_install_id(install_id_path)
+    if existing:
+        return existing
 
     install_id_path.parent.mkdir(parents=True, exist_ok=True)
     value = f"subsurf-{secrets.token_hex(4)}"
     install_id_path.write_text(value)
     os.chmod(install_id_path, 0o600)
     return value
+
+
+def load_existing_install_id(path: str | Path = DEFAULT_INSTALL_ID_FILE) -> str | None:
+    install_id_path = Path(path).expanduser()
+    if not install_id_path.exists():
+        return None
+    value = install_id_path.read_text().strip()
+    return value or None
+
+
+def default_config_dir_for_account(account_id: str) -> str:
+    return str(Path(f"{DEFAULT_CONFIG_ROOT}-{account_id}").expanduser())
+
+
+def default_state_dir_for_account(account_id: str) -> Path:
+    return Path(DEFAULT_INSTALLS_DIR).expanduser() / account_id
+
+
+def default_token_file_for_account(account_id: str) -> str:
+    return str(default_state_dir_for_account(account_id) / "oauth_token")
+
+
+def default_accounts_file_for_account(account_id: str) -> str:
+    return str(default_state_dir_for_account(account_id) / "cc_accounts.json")
+
+
+def default_pool_file_for_account(account_id: str) -> str:
+    return str(default_state_dir_for_account(account_id) / "oauth_pool.json")
 
 
 def resolve_options(args: argparse.Namespace) -> WizardOptions:
@@ -102,7 +131,7 @@ def resolve_options(args: argparse.Namespace) -> WizardOptions:
         generated_account_id = load_or_create_install_id(args.install_id_file)
         account_id = prompt(generated_account_id, "Account id") if args.manual else generated_account_id
     label = args.label or (prompt(account_id, "Account label/email") if args.manual else account_id)
-    default_config = str(Path(f"{DEFAULT_CONFIG_ROOT}-{account_id}").expanduser())
+    default_config = default_config_dir_for_account(account_id)
     config_dir = args.config_dir or (
         prompt(default_config, "Claude config dir for this login") if args.manual else default_config
     )
@@ -147,9 +176,9 @@ def resolve_options(args: argparse.Namespace) -> WizardOptions:
         account_id=account_id,
         label=label,
         config_dir=config_dir,
-        token_file=args.token_file,
-        accounts_file=args.accounts_file,
-        pool_file=args.pool_file,
+        token_file=args.token_file or default_token_file_for_account(account_id),
+        accounts_file=args.accounts_file or default_accounts_file_for_account(account_id),
+        pool_file=args.pool_file or default_pool_file_for_account(account_id),
         interval=args.interval,
         launch_claude=launch_claude,
         skip_login=args.skip_login,
@@ -189,10 +218,12 @@ def validate_config_dir(*, account_id: str, config_dir: str, allow_shared: bool)
 
 
 def run_claude_login(options: WizardOptions) -> None:
+    validate_options(options)
     heading("Claude Login")
     print("A Claude Code session will open with this isolated config directory:")
     print(f"  CLAUDE_CONFIG_DIR={Path(options.config_dir).expanduser()}")
     print()
+    print("Safety: do not run `/login` from your normal Claude Code terminal.")
     print("Inside Claude Code, run `/login`, finish browser auth, then run `/exit`.")
     print("If refresh later fails with invalid_grant, run `/login` again before `/exit`.")
     if options.skip_login:
@@ -233,6 +264,7 @@ def enroll_and_publish(options: WizardOptions) -> None:
         enroll=options.account_id,
         label=options.label,
         accounts_file=options.accounts_file,
+        config_dir=options.config_dir,
     )
     bridge.enroll_from_keychain(enroll_args)
 
@@ -283,6 +315,14 @@ def daemon_command(options: WizardOptions) -> list[str]:
     ]
 
 
+def runtime_file_for_options(options: WizardOptions, name: str, fallback: str) -> Path:
+    accounts_file = Path(options.accounts_file).expanduser()
+    default_accounts = Path(DEFAULT_ACCOUNTS_FILE).expanduser()
+    if accounts_file != default_accounts:
+        return accounts_file.parent / name
+    return Path(fallback).expanduser()
+
+
 def start_daemon(options: WizardOptions) -> int | None:
     heading("Keepalive")
     command = daemon_command(options)
@@ -293,8 +333,8 @@ def start_daemon(options: WizardOptions) -> int | None:
         print("Daemon not started. Run the command above when you want keepalive.")
         return None
 
-    log_file = Path(DEFAULT_LOG_FILE).expanduser()
-    pid_file = Path(DEFAULT_PID_FILE).expanduser()
+    log_file = runtime_file_for_options(options, "subsurf_bridge.log", DEFAULT_LOG_FILE)
+    pid_file = runtime_file_for_options(options, "subsurf_bridge.pid", DEFAULT_PID_FILE)
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
     existing_pid = running_pid_from_file(pid_file)
@@ -387,11 +427,30 @@ def run_wizard(args: argparse.Namespace) -> int:
 
 def status(args: argparse.Namespace) -> int:
     heading("SubSurf Status")
-    token = Path(args.token_file).expanduser()
-    accounts = Path(args.accounts_file).expanduser()
-    pid = Path(DEFAULT_PID_FILE).expanduser()
+    account_id = getattr(args, "account_id", None) or load_existing_install_id(
+        getattr(args, "install_id_file", DEFAULT_INSTALL_ID_FILE),
+    )
+    if account_id:
+        token_file = getattr(args, "token_file", None) or default_token_file_for_account(account_id)
+        accounts_file = getattr(args, "accounts_file", None) or default_accounts_file_for_account(
+            account_id,
+        )
+        config_dir = getattr(args, "config_dir", None) or default_config_dir_for_account(account_id)
+    else:
+        token_file = getattr(args, "token_file", None) or DEFAULT_TOKEN_FILE
+        accounts_file = getattr(args, "accounts_file", None) or DEFAULT_ACCOUNTS_FILE
+        config_dir = getattr(args, "config_dir", None) or "(unknown)"
+
+    token = Path(token_file).expanduser()
+    accounts = Path(accounts_file).expanduser()
+    pid = accounts.parent / "subsurf_bridge.pid" if account_id else Path(DEFAULT_PID_FILE).expanduser()
     print(f"Base token:    {token} {'exists' if token.exists() else 'missing'}")
     print(f"Accounts file: {accounts} {'exists' if accounts.exists() else 'missing'}")
+    print(f"Account id:    {account_id or 'not recorded'}")
+    print(f"Claude config: {Path(config_dir).expanduser() if account_id else config_dir}")
+    if account_id:
+        service = bridge_module().keychain_service_for_config_dir(config_dir)
+        print(f"Keychain svc:  {service}")
     print(f"Daemon pid:    {pid.read_text().strip() if pid.exists() else 'not recorded'}")
     return 0
 
@@ -403,9 +462,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config-dir")
     parser.add_argument("--install-id-file", default=DEFAULT_INSTALL_ID_FILE, help=argparse.SUPPRESS)
     parser.add_argument("--manual", action="store_true", help="ask setup questions interactively")
-    parser.add_argument("--token-file", default=DEFAULT_TOKEN_FILE)
-    parser.add_argument("--accounts-file", default=DEFAULT_ACCOUNTS_FILE)
-    parser.add_argument("--pool-file", default=DEFAULT_POOL_FILE)
+    parser.add_argument("--token-file")
+    parser.add_argument("--accounts-file")
+    parser.add_argument("--pool-file")
     parser.add_argument("--interval", type=int, default=60)
     parser.add_argument("--skip-login", action="store_true")
     parser.add_argument(

@@ -42,6 +42,25 @@ def test_status_handles_missing_files(tmp_path: Path, capsys):
     assert "missing" in out
 
 
+def test_status_reports_generated_isolation_paths(tmp_path: Path, capsys):
+    install_id_file = tmp_path / "install_id"
+    install_id_file.write_text("subsurf-abcd1234")
+    args = argparse.Namespace(
+        account_id=None,
+        config_dir=None,
+        install_id_file=str(install_id_file),
+        token_file=None,
+        accounts_file=None,
+    )
+
+    assert wizard.status(args) == 0
+
+    out = capsys.readouterr().out
+    assert "subsurf-abcd1234" in out
+    assert ".claude-subsurf-subsurf-abcd1234" in out
+    assert "Claude Code-credentials-" in out
+
+
 def test_enroll_and_publish_rolls_back_invalid_grant(tmp_path: Path, monkeypatch):
     accounts_file = tmp_path / "cc_accounts.json"
     accounts_file.write_text(json.dumps({"accounts": [{"id": "old", "label": "old"}]}))
@@ -113,7 +132,7 @@ def test_resolve_options_skip_login_does_not_prompt_for_launch(monkeypatch):
     assert options.launch_claude is False
 
 
-def test_resolve_options_auto_defaults_do_not_prompt(monkeypatch):
+def test_resolve_options_auto_defaults_do_not_prompt(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(wizard, "prompt", fail_prompt)
     monkeypatch.setattr(wizard, "prompt_bool", fail_prompt_bool)
     monkeypatch.setattr(wizard.shutil, "which", lambda name: "/opt/homebrew/bin/claude")
@@ -125,6 +144,7 @@ def test_resolve_options_auto_defaults_do_not_prompt(monkeypatch):
             start_daemon=None,
             attach_dir=None,
             account_id=None,
+            install_id_file=tmp_path / "install_id",
         ),
     )
 
@@ -135,6 +155,8 @@ def test_resolve_options_auto_defaults_do_not_prompt(monkeypatch):
     assert options.start_daemon is True
     assert options.attach_dir == "sample-app"
     assert options.overwrite_attach is True
+    assert f"installs/{options.account_id}/oauth_token" in options.token_file
+    assert f"installs/{options.account_id}/cc_accounts.json" in options.accounts_file
 
 
 def test_resolve_options_reuses_generated_install_id(tmp_path: Path, monkeypatch):
@@ -191,6 +213,37 @@ def test_run_claude_login_skip_login_does_not_prompt(monkeypatch, tmp_path: Path
     wizard.run_claude_login(options)
 
 
+def test_run_claude_login_passes_isolated_config(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run(cmd, *, env):
+        calls.append((cmd, env))
+        return argparse.Namespace(returncode=0)
+
+    monkeypatch.setattr(wizard.subprocess, "run", fake_run)
+    options = _options(
+        tmp_path,
+        config_dir=str(tmp_path / ".claude-subsurf-acct"),
+        allow_shared=False,
+    )
+    options.skip_login = False
+    options.launch_claude = True
+
+    wizard.run_claude_login(options)
+
+    assert calls[0][0] == ["claude"]
+    assert calls[0][1]["CLAUDE_CONFIG_DIR"] == str(tmp_path / ".claude-subsurf-acct")
+
+
+def test_run_claude_login_rejects_shared_config_even_when_called_directly(tmp_path: Path):
+    options = _options(tmp_path, config_dir="~/.claude", allow_shared=False)
+    options.skip_login = False
+    options.launch_claude = True
+
+    with pytest.raises(wizard.WizardError, match="Refusing to use"):
+        wizard.run_claude_login(options)
+
+
 def test_running_pid_from_file_handles_stale_pid(tmp_path: Path):
     pid_file = tmp_path / "pid"
     pid_file.write_text("999999999")
@@ -230,15 +283,18 @@ def _args(
     start_daemon: bool | None = False,
     attach_dir: str | None = "./sample-app",
     overwrite_attach: bool | None = None,
+    token_file: str | None = None,
+    accounts_file: str | None = None,
+    pool_file: str | None = None,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         account_id=account_id,
         label=account_id,
         config_dir=config_dir,
         install_id_file=str(install_id_file or Path("/tmp/subsurf-test-install-id")),
-        token_file="~/.config/subsurf/oauth_token",
-        accounts_file="~/.config/subsurf/cc_accounts.json",
-        pool_file="~/.config/subsurf/oauth_pool.json",
+        token_file=token_file,
+        accounts_file=accounts_file,
+        pool_file=pool_file,
         interval=60,
         manual=False,
         skip_login=skip_login,

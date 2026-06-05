@@ -16,6 +16,7 @@ from typing import Any
 
 from subsurf.attach import build_attach_plan, write_attach_files
 from subsurf.config import SubSurfSettings
+from subsurf import wizard
 from subsurf.wizard import DEFAULT_ACCOUNTS_FILE, DEFAULT_POOL_FILE, DEFAULT_TOKEN_FILE
 
 
@@ -39,9 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--account-id", help="account id, e.g. subsurf-4f1a2b3c")
     parser.add_argument("--app-dir", default=DEFAULT_APP_DIR)
-    parser.add_argument("--token-file", default=DEFAULT_TOKEN_FILE)
-    parser.add_argument("--accounts-file", default=DEFAULT_ACCOUNTS_FILE)
-    parser.add_argument("--pool-file", default=DEFAULT_POOL_FILE)
+    parser.add_argument("--token-file")
+    parser.add_argument("--accounts-file")
+    parser.add_argument("--pool-file")
     parser.add_argument("--model", default="sonnet")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--skip-refresh", action="store_true")
@@ -97,15 +98,31 @@ def main() -> int:
     print("Next time, just run:")
     print("  python -m subsurf.demo")
     print()
-    print("Keepalive, when you want it:")
-    print("  python scripts/cc_session_bridge.py --interval 60")
+    print("Keepalive status:")
+    print("  python -m subsurf.wizard --status")
     return 0
 
 
 def resolve_demo_paths(args: argparse.Namespace) -> DemoPaths:
-    token_base = Path(args.token_file).expanduser()
-    accounts_file = Path(args.accounts_file).expanduser()
-    account_id = args.account_id or first_account_id(accounts_file)
+    custom_paths = bool(args.token_file or args.accounts_file or args.pool_file)
+    account_id = args.account_id
+    if account_id is None and not custom_paths:
+        account_id = wizard.load_existing_install_id()
+    token_file = args.token_file
+    accounts_file_arg = args.accounts_file
+    pool_file = args.pool_file
+    if account_id:
+        token_file = token_file or wizard.default_token_file_for_account(account_id)
+        accounts_file_arg = accounts_file_arg or wizard.default_accounts_file_for_account(account_id)
+        pool_file = pool_file or wizard.default_pool_file_for_account(account_id)
+    else:
+        token_file = token_file or DEFAULT_TOKEN_FILE
+        accounts_file_arg = accounts_file_arg or DEFAULT_ACCOUNTS_FILE
+        pool_file = pool_file or DEFAULT_POOL_FILE
+
+    token_base = Path(token_file).expanduser()
+    accounts_file = Path(accounts_file_arg).expanduser()
+    account_id = account_id or first_account_id(accounts_file)
 
     token_path = token_base
     if account_id:
@@ -120,7 +137,7 @@ def resolve_demo_paths(args: argparse.Namespace) -> DemoPaths:
         token_base=token_base,
         token_path=token_path,
         accounts_file=accounts_file,
-        pool_file=Path(args.pool_file).expanduser(),
+        pool_file=Path(pool_file).expanduser(),
         app_dir=Path(args.app_dir).expanduser().resolve(),
         account_id=account_id,
     )

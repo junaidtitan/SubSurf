@@ -64,9 +64,9 @@ def auto_wizard_args(args: argparse.Namespace) -> argparse.Namespace:
         label=args.account_id,
         config_dir=None,
         install_id_file=args.install_id_file,
-        token_file=wizard.DEFAULT_TOKEN_FILE,
-        accounts_file=wizard.DEFAULT_ACCOUNTS_FILE,
-        pool_file=wizard.DEFAULT_POOL_FILE,
+        token_file=None,
+        accounts_file=None,
+        pool_file=None,
         interval=60,
         manual=False,
         skip_login=args.skip_login,
@@ -201,7 +201,8 @@ class SubSurfSetupApp(App):  # type: ignore[misc]
 
     def on_mount(self) -> None:
         self.log_line("Ready. Press Start Setup.")
-        self.log_line("Generated config and token names avoid clashes automatically.")
+        self.log_line("Generated config, token, and account files avoid clashes automatically.")
+        self.log_line("Safety: only run /login in the isolated Claude session opened by setup.")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "quit":
@@ -248,6 +249,7 @@ class SubSurfSetupApp(App):  # type: ignore[misc]
 
             self.update_step("login", "RUN", "Claude Code will take over this terminal")
             self.log_line("When Claude opens: run /login, finish browser auth, then /exit.")
+            self.log_line("Do not run /login in your normal Claude Code terminal for this setup.")
             if options.skip_login:
                 self.log_line("Skipping Claude launch because --skip-login was set.")
             else:

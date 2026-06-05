@@ -76,6 +76,11 @@ isolated Claude config directory such as `~/.claude-subsurf-subsurf-4f1a2b3c`.
 Avoid `~/.claude` unless you intentionally pass
 `--allow-shared-claude-config`.
 
+Safety note: old pre-isolation setup could collide with your normal Claude Code
+session. Current setup state is per-install under
+`~/.config/subsurf/installs/<account-id>/`, and direct bridge commands refuse
+the normal `~/.claude` Keychain service unless explicitly overridden.
+
 After setup, rerun the live test any time:
 
 ```bash
@@ -91,21 +96,15 @@ subsurf-demo
 The setup flow walks through:
 
 1. Logging into Claude Code in an isolated `CLAUDE_CONFIG_DIR`.
-2. Enrolling that Keychain session into `~/.config/subsurf/cc_accounts.json`.
-3. Publishing `~/.config/subsurf/oauth_token_<account-id>`.
+2. Enrolling that Keychain session into the per-install account file.
+3. Publishing the per-install token file.
 4. Starting the keepalive daemon.
 5. Creating attachment files for another app.
 
-Publish the current Claude Code session token once:
+Check setup status:
 
 ```bash
-python scripts/cc_session_bridge.py --once
-```
-
-Keep tokens fresh:
-
-```bash
-python scripts/cc_session_bridge.py --interval 60
+subsurf-wizard --status
 ```
 
 Use the extracted client:
@@ -166,7 +165,8 @@ sonnet -> claude-sonnet-4-6
 haiku  -> claude-haiku-4-5-20251001
 ```
 
-Default token and IPC files live under `~/.config/subsurf/`.
+Default setup token and IPC files live under
+`~/.config/subsurf/installs/<account-id>/`.
 
 ## Attaching Another App
 
@@ -180,7 +180,7 @@ Your app should either:
 Generate app-side files:
 
 ```bash
-subsurf-attach --app-dir /path/to/your/app --account-id "$(cat ~/.config/subsurf/install_id)"
+subsurf-attach --app-dir /path/to/your/app
 ```
 
 This writes:

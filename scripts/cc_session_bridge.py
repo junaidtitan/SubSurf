@@ -202,9 +202,12 @@ def enroll_from_keychain(args: argparse.Namespace) -> int:
         a for a in load_accounts(args.accounts_file)
         if a.get("id") != args.enroll
     ]
+    config_dir = getattr(args, "config_dir", None)
     accounts.append({
         "id": args.enroll,
         "label": args.label,
+        "configDir": config_dir,
+        "keychainService": args.service,
         "accessToken": blob["accessToken"],
         "refreshToken": blob.get("refreshToken"),
         "expiresAt": blob.get("expiresAt", 0),
@@ -300,6 +303,13 @@ def tick_multi(args: argparse.Namespace, accounts: list[dict[str, Any]]) -> None
     refreshed = 0
     for account in accounts:
         if args.force_refresh or expiring(account, args.skew):
+            if not refresh_allowed_for_account(account):
+                log(
+                    "refresh_skipped_unsafe_account",
+                    id=account.get("id", ""),
+                    reason=unsafe_refresh_reason(account),
+                )
+                continue
             account.update(refresh(account))
             refreshed += 1
     if refreshed:
@@ -314,6 +324,22 @@ def tick_multi(args: argparse.Namespace, accounts: list[dict[str, Any]]) -> None
         pushed = feed_pool_multi(accounts, args.pool_file)
         note += f" vms_pushed={pushed}"
     log("multi_published", **dict(kv.split("=", 1) for kv in note.split()))
+
+
+def refresh_allowed_for_account(account: dict[str, Any]) -> bool:
+    return unsafe_refresh_reason(account) is None
+
+
+def unsafe_refresh_reason(account: dict[str, Any]) -> str | None:
+    service = account.get("keychainService")
+    config_dir = account.get("configDir")
+    if service == KEYCHAIN_SERVICE:
+        return "shared_keychain_service"
+    if config_dir and os.path.expanduser(str(config_dir)) == os.path.expanduser("~/.claude"):
+        return "shared_claude_config"
+    if not service and not config_dir:
+        return "legacy_account_missing_isolation_metadata"
+    return None
 
 
 def tick_single(args: argparse.Namespace) -> None:
@@ -381,9 +407,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--push", action="store_true")
     parser.add_argument("--force-refresh", action="store_true")
+    parser.add_argument(
+        "--allow-shared-claude-config",
+        action="store_true",
+        help="allow reading or refreshing the normal ~/.claude Keychain service",
+    )
     parser.add_argument("--label", default="")
     parser.add_argument("--selftest", action="store_true")
     return parser
+
+
+def reject_shared_claude_source(args: argparse.Namespace) -> int | None:
+    if args.allow_shared_claude_config:
+        return None
+    if args.service != KEYCHAIN_SERVICE:
+        return None
+    log(
+        "error",
+        reason=(
+            "refusing to read or refresh the normal Claude Code Keychain service; "
+            "pass --config-dir for an isolated SubSurf login"
+        ),
+    )
+    return 2
 
 
 def main() -> int:
@@ -400,10 +446,21 @@ def main() -> int:
     if args.remove:
         return remove_account(args)
     if args.enroll:
+        shared_rejection = reject_shared_claude_source(args)
+        if shared_rejection is not None:
+            return shared_rejection
         return enroll_from_keychain(args)
     if args.once or args.interval <= 0:
+        if not load_accounts(args.accounts_file):
+            shared_rejection = reject_shared_claude_source(args)
+            if shared_rejection is not None:
+                return shared_rejection
         tick(args)
         return 0
+    if not load_accounts(args.accounts_file):
+        shared_rejection = reject_shared_claude_source(args)
+        if shared_rejection is not None:
+            return shared_rejection
     log("daemon_start", interval=args.interval, skew=args.skew, push=args.push)
     while True:
         try:

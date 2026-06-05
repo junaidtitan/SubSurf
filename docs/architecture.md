@@ -4,20 +4,24 @@ SubSurf has three layers.
 
 ## 1. Claude Code Session Bridge
 
-`scripts/cc_session_bridge.py` runs on the macOS host. It reads the Claude
-Code OAuth credential blob from Keychain:
+`scripts/cc_session_bridge.py` runs on the macOS host. For SubSurf setup, it
+reads the Claude Code OAuth credential blob from an isolated Claude config
+Keychain service:
 
 ```text
-service = Claude Code-credentials
+service = Claude Code-credentials-<sha256(config_dir)[:8]>
 payload = {"claudeAiOauth": {accessToken, refreshToken, expiresAt, ...}}
 ```
 
-For non-default `CLAUDE_CONFIG_DIR` values, it uses Claude Code's namespaced
-Keychain service form:
+The normal Claude Code Keychain service is:
 
 ```text
-Claude Code-credentials-<sha256(config_dir)[:8]>
+Claude Code-credentials
 ```
+
+Direct bridge commands refuse that shared service unless explicitly run with
+`--allow-shared-claude-config`. This prevents pre-isolation state from
+refreshing or invalidating the user's normal Claude Code session.
 
 The bridge refreshes credentials against:
 
@@ -27,22 +31,22 @@ client_id = 9d1c250a-e61b-44d9-88ed-5944d1962f5e
 grant_type = refresh_token
 ```
 
-The refreshed pair is written back to Keychain for single-session mode, and
-token files are published under `~/.config/subsurf/`.
+For wizard/TUI setup, refreshed account state and token files are published
+under `~/.config/subsurf/installs/<account-id>/`.
 
 ## 2. Token Files And Pool
 
 Single local token:
 
 ```text
-~/.config/subsurf/oauth_token
+~/.config/subsurf/installs/<account-id>/oauth_token
 ```
 
 Multi-account store:
 
 ```text
-~/.config/subsurf/cc_accounts.json
-~/.config/subsurf/oauth_token_<id>
+~/.config/subsurf/installs/<account-id>/cc_accounts.json
+~/.config/subsurf/installs/<account-id>/oauth_token_<id>
 ```
 
 Fleet pool:

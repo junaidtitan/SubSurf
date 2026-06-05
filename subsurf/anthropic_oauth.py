@@ -74,8 +74,8 @@ def load_oauth_token(path: str | Path) -> str:
     p = Path(path).expanduser()
     if not p.exists():
         raise OAuthTokenMissing(
-            f"OAuth token not found at {p}. Run `subsurf-pool assign` or "
-            "`subsurf-bridge --once` to provision it.",
+            f"OAuth token not found at {p}. Run `subsurf-setup` or "
+            "`subsurf-wizard` to provision it.",
         )
     token = p.read_text().strip()
     if not token:

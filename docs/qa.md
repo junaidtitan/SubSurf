@@ -99,7 +99,7 @@ subsurf-wizard
 Generate examples into a scratch app:
 
 ```bash
-subsurf-attach --app-dir /tmp/subsurf-app --account-id "$(cat ~/.config/subsurf/install_id)"
+subsurf-attach --app-dir /tmp/subsurf-app
 ```
 
 Then inspect or run:

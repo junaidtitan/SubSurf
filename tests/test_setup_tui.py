@@ -27,6 +27,8 @@ def test_auto_wizard_args_generate_isolated_setup(tmp_path: Path, monkeypatch):
     assert options.attach_dir == "sample-app"
     assert options.overwrite_attach is True
     assert options.start_daemon is False
+    assert f"installs/{options.account_id}/oauth_token" in options.token_file
+    assert f"installs/{options.account_id}/cc_accounts.json" in options.accounts_file
     assert install_id_file.read_text().strip() == options.account_id
 
 

@@ -25,6 +25,12 @@ generating a stable account id like `subsurf-4f1a2b3c`. That id is stored in:
 ~/.config/subsurf/install_id
 ```
 
+Per-install state is stored separately under:
+
+```text
+~/.config/subsurf/installs/subsurf-4f1a2b3c/
+```
+
 ## 1. Claude Login
 
 By default, the wizard uses:
@@ -52,35 +58,36 @@ If you explicitly pass `--config-dir ~/.claude`, the wizard refuses by default.
 Only use `--allow-shared-claude-config` when you intentionally want to share the
 normal Claude Code session.
 
+Do not run `/login` in your normal Claude Code terminal for SubSurf setup. Let
+the wizard launch Claude with the isolated `CLAUDE_CONFIG_DIR` shown above.
+
 ## 2. Enrollment
 
 The wizard reads the Keychain item for that config dir and stores the session
 metadata in:
 
 ```text
-~/.config/subsurf/cc_accounts.json
+~/.config/subsurf/installs/subsurf-4f1a2b3c/cc_accounts.json
 ```
 
 It then publishes:
 
 ```text
-~/.config/subsurf/oauth_token_subsurf-4f1a2b3c
-~/.config/subsurf/oauth_token
+~/.config/subsurf/installs/subsurf-4f1a2b3c/oauth_token_subsurf-4f1a2b3c
+~/.config/subsurf/installs/subsurf-4f1a2b3c/oauth_token
 ```
 
 ## 3. Keepalive
 
-The wizard can start a background bridge process:
-
-```bash
-subsurf-bridge --interval 60
-```
+The wizard can start a background bridge process using the per-install account
+file. The exact command is printed during setup and includes `--accounts-file`,
+`--token-file`, and `--pool-file`.
 
 It records:
 
 ```text
-~/.config/subsurf/subsurf_bridge.pid
-~/.config/subsurf/subsurf_bridge.log
+~/.config/subsurf/installs/subsurf-4f1a2b3c/subsurf_bridge.pid
+~/.config/subsurf/installs/subsurf-4f1a2b3c/subsurf_bridge.log
 ```
 
 Check status:
@@ -94,7 +101,7 @@ subsurf-wizard --status
 Run:
 
 ```bash
-subsurf-attach --app-dir /path/to/app --account-id "$(cat ~/.config/subsurf/install_id)"
+subsurf-attach --app-dir /path/to/app
 ```
 
 The setup UI and default wizard already write `./sample-app`. Use
