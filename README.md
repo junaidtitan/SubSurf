@@ -1,24 +1,28 @@
 # SubSurf
 
-SubSurf lets your local apps use an isolated Claude Code or Codex login without
-sharing your normal CLI session.
+SubSurf allows your applications to piggyback on Claude Code and Codex
+subscriptions instead of calling provider APIs directly.
 
-It is a small local bridge for people who already use Claude Code or Codex and
-want their own tools, agents, scripts, gateways, or test apps to piggyback on a
-separate managed login.
+It gives each app a separate, isolated login path so tests and local tools do
+not have to use your normal Claude Code or Codex session.
+
+## Disclaimer
+
+SubSurf is for educational and testing purposes only. It is a demonstration of
+local credential isolation, token refresh, and app attachment patterns. Use it
+only with accounts and subscriptions you are authorized to use, and follow the
+terms for the services involved.
 
 ## What SubSurf Does
 
 SubSurf can:
 
-- Walk you through Claude Code or Codex setup from the terminal.
-- Keep Claude Code OAuth access tokens fresh with a local keepalive daemon.
-- Write safe app attachment files so another project can use the isolated login.
-- Run Codex with a separate `CODEX_HOME`, so it does not collide with `~/.codex`.
-- Discover available Claude/Codex/OpenAI models from the active account when
-  possible, with offline aliases as a fallback.
-- Register as a LiteLLM provider named `subsurf`.
-- Run a small local OpenAI/Anthropic-compatible gateway.
+- Guide you through Claude Code or Codex setup in the terminal.
+- Keep Claude Code tokens fresh for local testing.
+- Create example files that show another app how to attach.
+- Run Codex from a separate `CODEX_HOME`, away from your normal `~/.codex`.
+- Show models available to the active account when possible.
+- Work through LiteLLM or a small local gateway.
 - Run local smoke and adversarial QA checks.
 
 SubSurf does **not** turn every credential into the same credential type. Claude
