@@ -40,70 +40,75 @@ docs/
 
 ## Quick Start
 
-Install in editable mode:
+Install SubSurf from this repo:
 
 ```bash
 cd SubSurf
 python -m pip install -e '.[dev]'
 ```
 
-Dead-simple setup:
-
-```bash
-python -m subsurf.setup
-```
-
-If SubSurf is installed in editable mode, this is the same as:
+Run setup:
 
 ```bash
 subsurf-setup
 ```
 
-When Claude Code opens in the terminal, run `/login`, finish browser auth, then
-run `/exit`. Setup then enrolls the token, starts keepalive, writes
-`./sample-app`, and runs live Python and gateway piggyback checks.
-
-Terminal-only setup:
+or, without relying on the console script:
 
 ```bash
-python -m subsurf.wizard
+python -m subsurf.setup
 ```
 
-SubSurf automatically creates a stable local account id like
-`subsurf-4f1a2b3c`, stores it in `~/.config/subsurf/install_id`, and uses an
-isolated Claude config directory such as `~/.claude-subsurf-subsurf-4f1a2b3c`.
-Avoid `~/.claude` unless you intentionally pass
-`--allow-shared-claude-config`.
+When Claude Code opens, run:
 
-Safety note: old pre-isolation setup could collide with your normal Claude Code
-session. Current setup state is per-install under
-`~/.config/subsurf/installs/<account-id>/`, and direct bridge commands refuse
-the normal `~/.claude` Keychain service unless explicitly overridden.
+```text
+/login
+/exit
+```
 
-After setup, rerun the live test any time:
+Finish browser auth between those two commands. Setup then enrolls the token,
+starts keepalive, writes `./sample-app`, and runs live Python and gateway
+piggyback checks.
+
+Repeatable piggyback test:
 
 ```bash
 python -m subsurf.demo
 ```
 
-or:
+Expected success lines:
 
-```bash
-subsurf-demo
+```text
+OK: Python app can piggyback
+OK: local gateway can piggyback
 ```
-
-The setup flow walks through:
-
-1. Logging into Claude Code in an isolated `CLAUDE_CONFIG_DIR`.
-2. Enrolling that Keychain session into the per-install account file.
-3. Publishing the per-install token file.
-4. Starting the keepalive daemon.
-5. Creating attachment files for another app.
 
 Check setup status:
 
 ```bash
 subsurf-wizard --status
+```
+
+SubSurf automatically creates a stable local account id like
+`subsurf-4f1a2b3c`, stores it in `~/.config/subsurf/install_id`, and uses:
+
+```text
+~/.claude-subsurf-<account-id>
+~/.config/subsurf/installs/<account-id>/
+```
+
+Safety rules:
+
+- Only run `/login` in the Claude session that SubSurf setup opens.
+- Do not run `/login` in your normal Claude Code terminal for SubSurf setup.
+- Avoid `~/.claude` unless you intentionally pass `--allow-shared-claude-config`.
+- Direct bridge commands refuse the normal `~/.claude` Keychain service unless
+  explicitly overridden.
+
+Advanced/manual wizard:
+
+```bash
+python -m subsurf.wizard --manual
 ```
 
 Use the extracted client:
