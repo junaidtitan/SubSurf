@@ -46,6 +46,22 @@ cd SubSurf
 python -m pip install -e '.[dev]'
 ```
 
+Dead-simple live test:
+
+```bash
+python -m subsurf.demo
+```
+
+If SubSurf is installed in editable mode, this is the same as:
+
+```bash
+subsurf-demo
+```
+
+That command refreshes/publishes the token, writes `./sample-app`, makes a
+direct Python piggyback call, and makes a gateway piggyback call without any
+manual curl quoting.
+
 Run the guided setup:
 
 ```bash

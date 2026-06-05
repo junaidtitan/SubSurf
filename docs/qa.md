@@ -15,6 +15,21 @@ generation, wizard helpers, pool helpers, and the LiteLLM custom provider.
 
 ## 2. Local QA Runner
 
+Run the foolproof live demo:
+
+```bash
+python -m subsurf.demo
+```
+
+or, after editable install:
+
+```bash
+subsurf-demo
+```
+
+It avoids shell JSON quoting by making both the Python and gateway calls from
+inside Python.
+
 Run the local smoke and adversarial pack:
 
 ```bash

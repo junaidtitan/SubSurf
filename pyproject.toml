@@ -30,6 +30,7 @@ dev = [
 [project.scripts]
 subsurf-attach = "subsurf.attach:main"
 subsurf-bridge = "scripts.cc_session_bridge:main"
+subsurf-demo = "subsurf.demo:main"
 subsurf-gateway = "subsurf.gateway:main"
 subsurf-litellm-smoke = "subsurf.litellm_smoke:main"
 subsurf-models = "subsurf.models:main"
