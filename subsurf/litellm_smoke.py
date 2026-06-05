@@ -102,7 +102,7 @@ def main() -> int:
             temperature=args.temperature,
         )
 
-    print(f"provider: subsurf")
+    print("provider: subsurf")
     print(f"mode:     {mode}")
     print(f"model:    {response.model}")
     print(f"content:  {response.choices[0].message.content}")

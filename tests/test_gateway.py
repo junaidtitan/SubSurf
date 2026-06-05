@@ -108,19 +108,43 @@ def test_gateway_rejects_streaming(tmp_path: Path):
     assert "streaming" in response.json()["detail"]
 
 
+def test_gateway_rejects_invalid_json(tmp_path: Path):
+    client = TestClient(_app(tmp_path, FakeOAuthClient()))
+
+    response = client.post(
+        "/v1/chat/completions",
+        content="{",
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert "valid JSON" in response.json()["detail"]
+
+
+def test_gateway_rejects_non_object_json(tmp_path: Path):
+    client = TestClient(_app(tmp_path, FakeOAuthClient()))
+
+    response = client.post(
+        "/v1/chat/completions",
+        json=[{"role": "user", "content": "hi"}],
+    )
+
+    assert response.status_code == 400
+    assert "JSON object" in response.json()["detail"]
+
+
 def test_gateway_auth_when_configured(tmp_path: Path):
     settings = SubSurfSettings(
         oauth_token_path=str(tmp_path / "oauth_token"),
-        gateway_api_key="secret",
+        gateway_access_token="secret",
     )
     client = TestClient(create_app(settings=settings, client_factory=lambda _: FakeOAuthClient()))
 
     assert client.get("/v1/models").status_code == 401
     assert client.get("/v1/models", headers={"Authorization": "Bearer secret"}).status_code == 200
-    assert client.get("/v1/models", headers={"X-Api-Key": "secret"}).status_code == 200
+    assert client.get("/v1/models", headers={"X-SubSurf-Token": "secret"}).status_code == 200
 
 
 def _app(tmp_path: Path, fake: FakeOAuthClient):
     settings = SubSurfSettings(oauth_token_path=str(tmp_path / "oauth_token"))
     return create_app(settings=settings, client_factory=lambda _: fake)
-

@@ -50,10 +50,10 @@ curl -s http://127.0.0.1:8765/v1/messages \
   }'
 ```
 
-Optional local API key:
+Optional local gateway access token:
 
 ```bash
-export SUBSURF_GATEWAY_API_KEY='local-secret'
+export SUBSURF_GATEWAY_ACCESS_TOKEN='local-secret'
 subsurf-gateway
 ```
 
@@ -61,8 +61,11 @@ Then send either:
 
 ```text
 Authorization: Bearer local-secret
-X-Api-Key: local-secret
+X-SubSurf-Token: local-secret
 ```
+
+This token only protects the local SubSurf gateway. It is not an Anthropic API
+key; upstream Anthropic calls still use the Claude Code OAuth token file.
 
 ## Models
 
@@ -95,4 +98,3 @@ streaming, tools, tool_choice, functions, response_format, stop
 ```
 
 Those should be added deliberately with tests rather than silently ignored.
-

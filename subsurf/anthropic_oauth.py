@@ -15,7 +15,11 @@ from typing import Any
 import anthropic
 import structlog
 
-from subsurf.models import resolve_model_id, strip_provider_prefix as strip_model_provider_prefix
+from subsurf.models import (
+    resolve_model_id,
+    strip_provider_prefix as strip_model_provider_prefix,
+    supports_sampling,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -119,18 +123,14 @@ class AnthropicOAuthClient:
                 "least one non-system message",
             )
 
-        kwargs: dict[str, Any] = {
-            "model": resolve_model_id(model),
-            "messages": converted,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        system_value = _with_cc_identity(system_prompt)
-        if system_value is not None:
-            kwargs["system"] = system_value
-        if "thinking" in extra:
-            kwargs["thinking"] = extra["thinking"]
-
+        kwargs = build_message_create_kwargs(
+            messages=converted,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            system_prompt=system_prompt,
+            extra=extra,
+        )
         response = await client.messages.create(**kwargs)
         text_parts = [
             block.text for block in response.content
@@ -148,6 +148,35 @@ class AnthropicOAuthClient:
 def strip_provider_prefix(model: str) -> str:
     """`anthropic_oauth/claude-sonnet-4-6` -> `claude-sonnet-4-6`."""
     return strip_model_provider_prefix(model)
+
+
+def build_message_create_kwargs(
+    *,
+    messages: list[dict[str, Any]],
+    model: str,
+    temperature: float | None,
+    max_tokens: int,
+    system_prompt: str | None,
+    extra: dict[str, Any],
+) -> dict[str, Any]:
+    """Build Anthropic Messages kwargs with model-aware compatibility rules."""
+    resolved_model = resolve_model_id(model)
+    kwargs: dict[str, Any] = {
+        "model": resolved_model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+    }
+    if temperature is not None and supports_sampling(resolved_model):
+        kwargs["temperature"] = temperature
+
+    system_value = _with_cc_identity(system_prompt)
+    if system_value is not None:
+        kwargs["system"] = system_value
+    if "thinking" in extra:
+        kwargs["thinking"] = extra["thinking"]
+    if "effort" in extra:
+        kwargs["effort"] = extra["effort"]
+    return kwargs
 
 
 def split_system_and_convert(

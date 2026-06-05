@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from subsurf.models import model_ids, openai_model_entries, resolve_model_id, strip_provider_prefix
+import subprocess
+import sys
+
+from subsurf.models import (
+    model_ids,
+    openai_model_entries,
+    resolve_model_id,
+    strip_provider_prefix,
+    supports_sampling,
+)
 
 
 def test_resolve_current_claude_code_family_aliases():
@@ -16,6 +25,14 @@ def test_resolve_provider_prefixed_aliases():
 
 def test_unknown_full_model_ids_pass_through():
     assert resolve_model_id("claude-sonnet-9-9") == "claude-sonnet-9-9"
+
+
+def test_sampling_support_tracks_opus_4_7_and_later():
+    assert supports_sampling("claude-sonnet-4-6")
+    assert supports_sampling("claude-opus-4-6")
+    assert not supports_sampling("opus")
+    assert not supports_sampling("claude-opus-4-7")
+    assert not supports_sampling("claude-opus-4-8")
 
 
 def test_strip_provider_prefix():
@@ -39,3 +56,13 @@ def test_openai_model_entries_shape():
     assert entries[0]["object"] == "model"
     assert entries[0]["owned_by"] == "subsurf"
 
+
+def test_models_module_runs_without_import_warning():
+    result = subprocess.run(
+        [sys.executable, "-W", "error", "-m", "subsurf.models"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "claude-opus-4-8" in result.stdout

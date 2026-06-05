@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -139,6 +140,15 @@ def resolve_model_id(model: str) -> str:
     return alias_map().get(stripped.lower(), stripped)
 
 
+def supports_sampling(model: str) -> bool:
+    """Return False for model IDs known to reject temperature/top_p/top_k."""
+    resolved = resolve_model_id(model)
+    match = re.fullmatch(r"claude-opus-4-(\d+)(?:-\d{8})?", resolved)
+    if match and int(match.group(1)) >= 7:
+        return False
+    return True
+
+
 def model_ids(*, include_aliases: bool = False, provider_prefix: str = "") -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -188,4 +198,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

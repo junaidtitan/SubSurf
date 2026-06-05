@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import os
 import time
 import uuid
@@ -56,9 +57,9 @@ def create_app(
     @app.get("/subsurf/status")
     async def status(
         authorization: str | None = Header(default=None),
-        x_api_key: str | None = Header(default=None),
+        x_subsurf_token: str | None = Header(default=None, alias="X-SubSurf-Token"),
     ) -> dict[str, object]:
-        _require_auth(cfg, authorization, x_api_key)
+        _require_auth(cfg, authorization, x_subsurf_token)
         token_path = Path(cfg.oauth_token_path).expanduser()
         token_present = token_path.exists() and bool(token_path.read_text().strip())
         stat = token_path.stat() if token_path.exists() else None
@@ -74,19 +75,19 @@ def create_app(
     @app.get("/v1/models")
     async def models(
         authorization: str | None = Header(default=None),
-        x_api_key: str | None = Header(default=None),
+        x_subsurf_token: str | None = Header(default=None, alias="X-SubSurf-Token"),
     ) -> dict[str, object]:
-        _require_auth(cfg, authorization, x_api_key)
+        _require_auth(cfg, authorization, x_subsurf_token)
         return {"object": "list", "data": openai_model_entries()}
 
     @app.post("/v1/chat/completions")
     async def chat_completions(
         request: Request,
         authorization: str | None = Header(default=None),
-        x_api_key: str | None = Header(default=None),
+        x_subsurf_token: str | None = Header(default=None, alias="X-SubSurf-Token"),
     ) -> dict[str, object]:
-        _require_auth(cfg, authorization, x_api_key)
-        body = await request.json()
+        _require_auth(cfg, authorization, x_subsurf_token)
+        body = await _read_json_body(request)
         _reject_stream(body)
         _reject_unsupported(body)
 
@@ -109,10 +110,10 @@ def create_app(
     async def anthropic_messages(
         request: Request,
         authorization: str | None = Header(default=None),
-        x_api_key: str | None = Header(default=None),
+        x_subsurf_token: str | None = Header(default=None, alias="X-SubSurf-Token"),
     ) -> dict[str, object]:
-        _require_auth(cfg, authorization, x_api_key)
-        body = await request.json()
+        _require_auth(cfg, authorization, x_subsurf_token)
+        body = await _read_json_body(request)
         _reject_stream(body)
         _reject_unsupported(body)
 
@@ -138,6 +139,16 @@ def create_app(
 
 def _default_client_factory(settings: SubSurfSettings) -> AnthropicOAuthClient:
     return AnthropicOAuthClient(token_path=os.path.expanduser(settings.oauth_token_path))
+
+
+async def _read_json_body(request: Request) -> dict[str, Any]:
+    try:
+        body = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="request body must be valid JSON") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="request body must be a JSON object")
+    return body
 
 
 async def _complete(
@@ -246,15 +257,19 @@ def _reject_unsupported(body: dict[str, Any]) -> None:
 def _require_auth(
     settings: SubSurfSettings,
     authorization: str | None,
-    x_api_key: str | None,
+    x_subsurf_token: str | None,
 ) -> None:
-    if not settings.gateway_api_key:
+    if not settings.gateway_access_token:
         return
-    bearer = None
+    candidates: list[str] = []
     if authorization and authorization.lower().startswith("bearer "):
-        bearer = authorization.split(" ", 1)[1]
-    if settings.gateway_api_key not in {bearer, x_api_key}:
-        raise HTTPException(status_code=401, detail="invalid SubSurf gateway API key")
+        candidates.append(authorization.split(" ", 1)[1])
+    if x_subsurf_token:
+        candidates.append(x_subsurf_token)
+    for candidate in candidates:
+        if hmac.compare_digest(settings.gateway_access_token, candidate):
+            return
+    raise HTTPException(status_code=401, detail="invalid SubSurf gateway access token")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -285,4 +300,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

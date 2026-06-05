@@ -10,7 +10,6 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from subsurf.attach import build_attach_plan, print_attach_instructions, write_attach_files
 

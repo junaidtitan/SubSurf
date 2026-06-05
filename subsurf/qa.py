@@ -177,12 +177,12 @@ def _gateway_auth_rejects() -> None:
     from subsurf.gateway import create_app
 
     app = create_app(
-        settings=SubSurfSettings(gateway_api_key="secret"),
+        settings=SubSurfSettings(gateway_access_token="secret"),
         client_factory=lambda _: FakeOAuthClient(),
     )
     client = TestClient(app)
     assert client.get("/v1/models").status_code == 401
-    assert client.get("/v1/models", headers={"X-Api-Key": "secret"}).status_code == 200
+    assert client.get("/v1/models", headers={"X-SubSurf-Token": "secret"}).status_code == 200
 
 
 def _unsupported_tools() -> None:

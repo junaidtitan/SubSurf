@@ -53,7 +53,7 @@ class SubSurfSettings:
     temperature: float = 0.0
     gateway_host: str = "127.0.0.1"
     gateway_port: int = 8765
-    gateway_api_key: str | None = None
+    gateway_access_token: str | None = None
 
     @classmethod
     def from_env(cls) -> "SubSurfSettings":
@@ -80,7 +80,10 @@ class SubSurfSettings:
             temperature=_float_env("SUBSURF_TEMPERATURE", cls.temperature),
             gateway_host=os.environ.get("SUBSURF_GATEWAY_HOST", cls.gateway_host),
             gateway_port=_int_env("SUBSURF_GATEWAY_PORT", cls.gateway_port),
-            gateway_api_key=_optional_env("SUBSURF_GATEWAY_API_KEY"),
+            gateway_access_token=(
+                _optional_env("SUBSURF_GATEWAY_ACCESS_TOKEN")
+                or _optional_env("SUBSURF_GATEWAY_API_KEY")
+            ),
         )
 
 
