@@ -15,6 +15,15 @@ generation, wizard helpers, pool helpers, and the LiteLLM custom provider.
 
 ## 2. Local QA Runner
 
+Run setup once:
+
+```bash
+python -m subsurf.setup_tui
+```
+
+Click `Start Setup`. When Claude Code opens, run `/login`, finish browser auth,
+then run `/exit`.
+
 Run the foolproof live demo:
 
 ```bash
@@ -76,13 +85,13 @@ subsurf-litellm-smoke --live --prompt "Say hello through LiteLLM."
 If live mode reports a missing token file, run:
 
 ```bash
-subsurf-wizard
+subsurf-setup
 ```
 
 or:
 
 ```bash
-subsurf-bridge --once
+subsurf-wizard
 ```
 
 ## 4. App Attachment Test
@@ -90,7 +99,7 @@ subsurf-bridge --once
 Generate examples into a scratch app:
 
 ```bash
-subsurf-attach --app-dir /tmp/subsurf-app --account-id subsurf1
+subsurf-attach --app-dir /tmp/subsurf-app --account-id "$(cat ~/.config/subsurf/install_id)"
 ```
 
 Then inspect or run:

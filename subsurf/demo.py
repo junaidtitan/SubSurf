@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run a foolproof local SubSurf live test without curl quoting",
     )
-    parser.add_argument("--account-id", help="account id, e.g. default or subsurf1")
+    parser.add_argument("--account-id", help="account id, e.g. subsurf-4f1a2b3c")
     parser.add_argument("--app-dir", default=DEFAULT_APP_DIR)
     parser.add_argument("--token-file", default=DEFAULT_TOKEN_FILE)
     parser.add_argument("--accounts-file", default=DEFAULT_ACCOUNTS_FILE)
@@ -290,17 +290,11 @@ def print_missing_setup_help(paths: DemoPaths) -> None:
     print()
     print("SubSurf does not have a usable token yet.")
     print()
-    print("Run this once, complete Claude login, then rerun `python -m subsurf.demo`:")
-    print(
-        "  python -m subsurf.wizard "
-        "--account-id default "
-        "--label default "
-        "--config-dir ~/.claude "
-        "--skip-login "
-        "--no-start-daemon "
-        f"--attach-dir {paths.app_dir} "
-        "--overwrite-attach",
-    )
+    print("Run the setup UI once, complete Claude login, then rerun this demo:")
+    print("  python -m subsurf.setup_tui")
+    print()
+    print("Terminal-only setup:")
+    print(f"  python -m subsurf.wizard --attach-dir {paths.app_dir}")
 
 
 if __name__ == "__main__":

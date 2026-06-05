@@ -19,11 +19,17 @@ gateway = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
 ]
+tui = [
+    "fastapi>=0.110",
+    "httpx>=0.27",
+    "textual>=0.86",
+]
 dev = [
     "fastapi>=0.110",
     "httpx>=0.27",
     "pytest>=7.4",
     "pytest-asyncio>=0.23",
+    "textual>=0.86",
     "uvicorn>=0.29",
 ]
 
@@ -36,6 +42,7 @@ subsurf-litellm-smoke = "subsurf.litellm_smoke:main"
 subsurf-models = "subsurf.models:main"
 subsurf-pool = "scripts.oauth_pool:main"
 subsurf-qa = "subsurf.qa:main"
+subsurf-setup = "subsurf.setup_tui:main"
 subsurf-wizard = "subsurf.wizard:main"
 
 [tool.hatch.build.targets.wheel]

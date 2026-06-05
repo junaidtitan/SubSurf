@@ -113,6 +113,91 @@ def test_resolve_options_skip_login_does_not_prompt_for_launch(monkeypatch):
     assert options.launch_claude is False
 
 
+def test_resolve_options_auto_defaults_do_not_prompt(monkeypatch):
+    monkeypatch.setattr(wizard, "prompt", fail_prompt)
+    monkeypatch.setattr(wizard, "prompt_bool", fail_prompt_bool)
+    monkeypatch.setattr(wizard.shutil, "which", lambda name: "/opt/homebrew/bin/claude")
+
+    options = wizard.resolve_options(
+        _args(
+            config_dir=None,
+            skip_login=False,
+            start_daemon=None,
+            attach_dir=None,
+            account_id=None,
+        ),
+    )
+
+    assert options.account_id.startswith("subsurf-")
+    assert options.label == options.account_id
+    assert options.config_dir.endswith(f".claude-subsurf-{options.account_id}")
+    assert options.launch_claude is True
+    assert options.start_daemon is True
+    assert options.attach_dir == "sample-app"
+    assert options.overwrite_attach is True
+
+
+def test_resolve_options_reuses_generated_install_id(tmp_path: Path, monkeypatch):
+    install_id_file = tmp_path / "install_id"
+    monkeypatch.setattr(wizard, "prompt", fail_prompt)
+    monkeypatch.setattr(wizard, "prompt_bool", fail_prompt_bool)
+
+    first = wizard.resolve_options(
+        _args(
+            config_dir=None,
+            skip_login=True,
+            account_id=None,
+            install_id_file=install_id_file,
+        ),
+    )
+    second = wizard.resolve_options(
+        _args(
+            config_dir=None,
+            skip_login=True,
+            account_id=None,
+            install_id_file=install_id_file,
+        ),
+    )
+
+    assert first.account_id == second.account_id
+    assert install_id_file.read_text().strip() == first.account_id
+
+
+def test_resolve_options_explicit_account_id_does_not_create_install_id(tmp_path: Path):
+    install_id_file = tmp_path / "install_id"
+
+    options = wizard.resolve_options(
+        _args(
+            config_dir=None,
+            skip_login=True,
+            account_id="explicit",
+            install_id_file=install_id_file,
+        ),
+    )
+
+    assert options.account_id == "explicit"
+    assert not install_id_file.exists()
+
+
+def test_run_claude_login_skip_login_does_not_prompt(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(wizard, "prompt", fail_prompt)
+    monkeypatch.setattr(wizard, "prompt_bool", fail_prompt_bool)
+    options = _options(
+        tmp_path,
+        config_dir="~/.claude-subsurf-default",
+        allow_shared=False,
+    )
+
+    wizard.run_claude_login(options)
+
+
+def test_running_pid_from_file_handles_stale_pid(tmp_path: Path):
+    pid_file = tmp_path / "pid"
+    pid_file.write_text("999999999")
+
+    assert wizard.running_pid_from_file(pid_file) is None
+
+
 def _options(
     tmp_path: Path,
     *,
@@ -138,29 +223,38 @@ def _options(
 
 def _args(
     *,
-    config_dir: str,
+    config_dir: str | None,
     skip_login: bool,
+    account_id: str | None = "default",
+    install_id_file: Path | None = None,
     start_daemon: bool | None = False,
     attach_dir: str | None = "./sample-app",
+    overwrite_attach: bool | None = None,
 ) -> argparse.Namespace:
     return argparse.Namespace(
-        account_id="default",
-        label="default",
+        account_id=account_id,
+        label=account_id,
         config_dir=config_dir,
+        install_id_file=str(install_id_file or Path("/tmp/subsurf-test-install-id")),
         token_file="~/.config/subsurf/oauth_token",
         accounts_file="~/.config/subsurf/cc_accounts.json",
         pool_file="~/.config/subsurf/oauth_pool.json",
         interval=60,
+        manual=False,
         skip_login=skip_login,
         allow_shared_claude_config=False,
         launch_claude=None,
         start_daemon=start_daemon,
         attach_dir=attach_dir,
-        overwrite_attach=True,
+        overwrite_attach=overwrite_attach,
     )
 
 
 def fail_prompt_bool(default: bool, message: str) -> bool:
+    raise AssertionError(f"unexpected prompt: {message}")
+
+
+def fail_prompt(default: str, message: str) -> str:
     raise AssertionError(f"unexpected prompt: {message}")
 
 

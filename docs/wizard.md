@@ -1,20 +1,39 @@
 # Wizard Guide
 
-Run:
+Preferred setup UI:
+
+```bash
+subsurf-setup
+```
+
+or:
+
+```bash
+python -m subsurf.setup_tui
+```
+
+Terminal-only setup:
 
 ```bash
 subsurf-wizard
 ```
 
-The wizard moves through the setup in order.
+The setup moves through the flow in order and avoids naming collisions by
+generating a stable account id like `subsurf-4f1a2b3c`. That id is stored in:
+
+```text
+~/.config/subsurf/install_id
+```
 
 ## 1. Claude Login
 
-The wizard asks for:
+By default, the wizard uses:
 
-- an account id, for example `subsurf1`
-- a label, usually an email
-- an isolated Claude config dir, for example `~/.claude-subsurf-subsurf1`
+- account id from `~/.config/subsurf/install_id`
+- label equal to that account id
+- isolated Claude config dir, for example `~/.claude-subsurf-subsurf-4f1a2b3c`
+
+Use `subsurf-wizard --manual` only if you want to answer those prompts yourself.
 
 Do not use `~/.claude` for SubSurf setup. SubSurf intentionally uses an
 isolated Claude config directory so Claude Code creates a separate Keychain
@@ -23,7 +42,7 @@ OAuth entry and does not collide with your normal Claude Code session.
 It can launch:
 
 ```bash
-CLAUDE_CONFIG_DIR=~/.claude-subsurf-subsurf1 claude
+CLAUDE_CONFIG_DIR=~/.claude-subsurf-subsurf-4f1a2b3c claude
 ```
 
 Inside Claude Code, complete `/login`, finish browser auth, then run `/exit`.
@@ -45,7 +64,7 @@ metadata in:
 It then publishes:
 
 ```text
-~/.config/subsurf/oauth_token_subsurf1
+~/.config/subsurf/oauth_token_subsurf-4f1a2b3c
 ~/.config/subsurf/oauth_token
 ```
 
@@ -75,10 +94,12 @@ subsurf-wizard --status
 Run:
 
 ```bash
-subsurf-attach --app-dir /path/to/app --account-id subsurf1
+subsurf-attach --app-dir /path/to/app --account-id "$(cat ~/.config/subsurf/install_id)"
 ```
 
-This writes `.env.subsurf` and two Python examples.
+The setup UI and default wizard already write `./sample-app`. Use
+`subsurf-attach` when you want to attach a different app. It writes
+`.env.subsurf` and Python examples.
 
 The app-side contract is:
 

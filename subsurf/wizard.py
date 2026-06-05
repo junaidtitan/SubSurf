@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import secrets
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,8 @@ from subsurf.attach import build_attach_plan, print_attach_instructions, write_a
 
 
 DEFAULT_CONFIG_ROOT = "~/.claude-subsurf"
+DEFAULT_INSTALL_ID_FILE = "~/.config/subsurf/install_id"
+DEFAULT_ATTACH_DIR = "sample-app"
 DEFAULT_TOKEN_FILE = "~/.config/subsurf/oauth_token"
 DEFAULT_ACCOUNTS_FILE = "~/.config/subsurf/cc_accounts.json"
 DEFAULT_POOL_FILE = "~/.config/subsurf/oauth_pool.json"
@@ -78,11 +81,31 @@ def check_prereqs() -> None:
     print(f"security:   {shutil.which('security') or 'not found'}")
 
 
+def load_or_create_install_id(path: str | Path = DEFAULT_INSTALL_ID_FILE) -> str:
+    install_id_path = Path(path).expanduser()
+    if install_id_path.exists():
+        value = install_id_path.read_text().strip()
+        if value:
+            return value
+
+    install_id_path.parent.mkdir(parents=True, exist_ok=True)
+    value = f"subsurf-{secrets.token_hex(4)}"
+    install_id_path.write_text(value)
+    os.chmod(install_id_path, 0o600)
+    return value
+
+
 def resolve_options(args: argparse.Namespace) -> WizardOptions:
-    account_id = args.account_id or prompt("subsurf1", "Account id")
-    label = args.label or prompt(account_id, "Account label/email")
+    if args.account_id:
+        account_id = args.account_id
+    else:
+        generated_account_id = load_or_create_install_id(args.install_id_file)
+        account_id = prompt(generated_account_id, "Account id") if args.manual else generated_account_id
+    label = args.label or (prompt(account_id, "Account label/email") if args.manual else account_id)
     default_config = str(Path(f"{DEFAULT_CONFIG_ROOT}-{account_id}").expanduser())
-    config_dir = args.config_dir or prompt(default_config, "Claude config dir for this login")
+    config_dir = args.config_dir or (
+        prompt(default_config, "Claude config dir for this login") if args.manual else default_config
+    )
     validate_config_dir(
         account_id=account_id,
         config_dir=config_dir,
@@ -95,15 +118,30 @@ def resolve_options(args: argparse.Namespace) -> WizardOptions:
         launch_default = bool(shutil.which("claude"))
         launch_claude = args.launch_claude
         if launch_claude is None:
-            launch_claude = prompt_bool(launch_default, "Launch Claude for login now")
+            launch_claude = (
+                prompt_bool(launch_default, "Launch Claude for login now")
+                if args.manual
+                else launch_default
+            )
 
     start_daemon = args.start_daemon
     if start_daemon is None:
-        start_daemon = prompt_bool(True, "Start the token keepalive daemon")
+        start_daemon = (
+            prompt_bool(True, "Start the token keepalive daemon")
+            if args.manual
+            else True
+        )
 
     attach_dir = args.attach_dir
-    if attach_dir is None and prompt_bool(False, "Attach SubSurf to an app directory now"):
-        attach_dir = prompt(".", "App directory")
+    if attach_dir is None:
+        if args.manual:
+            attach_dir = prompt(".", "App directory") if prompt_bool(True, "Write sample app now") else None
+        else:
+            attach_dir = DEFAULT_ATTACH_DIR
+
+    overwrite_attach = args.overwrite_attach
+    if overwrite_attach is None:
+        overwrite_attach = not args.manual
 
     return WizardOptions(
         account_id=account_id,
@@ -117,7 +155,7 @@ def resolve_options(args: argparse.Namespace) -> WizardOptions:
         skip_login=args.skip_login,
         start_daemon=start_daemon,
         attach_dir=attach_dir,
-        overwrite_attach=args.overwrite_attach,
+        overwrite_attach=overwrite_attach,
         allow_shared_claude_config=args.allow_shared_claude_config,
     )
 
@@ -159,7 +197,6 @@ def run_claude_login(options: WizardOptions) -> None:
     print("If refresh later fails with invalid_grant, run `/login` again before `/exit`.")
     if options.skip_login:
         print("Skipping launch because --skip-login was provided.")
-        input("Press Enter after you have already logged in and exited Claude...")
         return
     if options.launch_claude:
         env = os.environ.copy()
@@ -172,6 +209,15 @@ def run_claude_login(options: WizardOptions) -> None:
     print("Run this in another terminal:")
     print(f"  CLAUDE_CONFIG_DIR={Path(options.config_dir).expanduser()} claude")
     input("Press Enter after you have logged in and exited Claude...")
+
+
+def print_configuration(options: WizardOptions) -> None:
+    heading("Configuration")
+    print(f"Account id:        {options.account_id}")
+    print(f"Claude config dir: {Path(options.config_dir).expanduser()}")
+    print(f"Token file:        {Path(f'{options.token_file}_{options.account_id}').expanduser()}")
+    print(f"Sample app:        {Path(options.attach_dir).expanduser() if options.attach_dir else 'not written'}")
+    print(f"Keepalive daemon:  {'start' if options.start_daemon else 'not started'}")
 
 
 def enroll_and_publish(options: WizardOptions) -> None:
@@ -250,6 +296,14 @@ def start_daemon(options: WizardOptions) -> int | None:
     log_file = Path(DEFAULT_LOG_FILE).expanduser()
     pid_file = Path(DEFAULT_PID_FILE).expanduser()
     log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    existing_pid = running_pid_from_file(pid_file)
+    if existing_pid is not None:
+        print(f"Keepalive already running pid={existing_pid}")
+        print(f"Log: {log_file}")
+        print(f"Pid: {pid_file}")
+        return existing_pid
+
     log_handle = log_file.open("ab")
     proc = subprocess.Popen(
         command,
@@ -263,6 +317,22 @@ def start_daemon(options: WizardOptions) -> int | None:
     print(f"Log: {log_file}")
     print(f"Pid: {pid_file}")
     return proc.pid
+
+
+def running_pid_from_file(pid_file: Path) -> int | None:
+    if not pid_file.exists():
+        return None
+    try:
+        pid = int(pid_file.read_text().strip())
+    except ValueError:
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        return pid
+    return pid
 
 
 def attach_app(options: WizardOptions) -> None:
@@ -298,6 +368,7 @@ def run_wizard(args: argparse.Namespace) -> int:
         check_prereqs()
         options = resolve_options(args)
         validate_options(options)
+        print_configuration(options)
         run_claude_login(options)
         enroll_and_publish(options)
         start_daemon(options)
@@ -326,10 +397,12 @@ def status(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Interactive SubSurf setup wizard")
+    parser = argparse.ArgumentParser(description="SubSurf setup wizard")
     parser.add_argument("--account-id")
     parser.add_argument("--label")
     parser.add_argument("--config-dir")
+    parser.add_argument("--install-id-file", default=DEFAULT_INSTALL_ID_FILE, help=argparse.SUPPRESS)
+    parser.add_argument("--manual", action="store_true", help="ask setup questions interactively")
     parser.add_argument("--token-file", default=DEFAULT_TOKEN_FILE)
     parser.add_argument("--accounts-file", default=DEFAULT_ACCOUNTS_FILE)
     parser.add_argument("--pool-file", default=DEFAULT_POOL_FILE)
@@ -343,7 +416,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--launch-claude", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--start-daemon", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--attach-dir")
-    parser.add_argument("--overwrite-attach", action="store_true")
+    parser.add_argument("--overwrite-attach", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--status", action="store_true", help="show token/daemon status and exit")
     return parser
 

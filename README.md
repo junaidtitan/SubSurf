@@ -22,6 +22,7 @@ subsurf/
   litellm_smoke.py        # manual LiteLLM smoke test CLI
   gateway.py              # small local HTTP gateway
   models.py               # Claude model catalog and aliases
+  setup_tui.py            # Textual one-button setup UI
   qa.py                   # local smoke/adversarial QA runner
   throttle.py             # throttle classification, flag/request/grant files
   engine.py               # small runtime wrapper around the OAuth client
@@ -46,44 +47,48 @@ cd SubSurf
 python -m pip install -e '.[dev]'
 ```
 
-Dead-simple live test:
+Dead-simple setup UI:
 
 ```bash
-python -m subsurf.demo
+python -m subsurf.setup_tui
 ```
 
 If SubSurf is installed in editable mode, this is the same as:
 
 ```bash
+subsurf-setup
+```
+
+Click `Start Setup`. When Claude Code opens in the terminal, run `/login`,
+finish browser auth, then run `/exit`. The UI enrolls the token, starts
+keepalive, writes `./sample-app`, and runs live Python and gateway piggyback
+checks.
+
+Terminal-only setup:
+
+```bash
+python -m subsurf.wizard
+```
+
+SubSurf automatically creates a stable local account id like
+`subsurf-4f1a2b3c`, stores it in `~/.config/subsurf/install_id`, and uses an
+isolated Claude config directory such as `~/.claude-subsurf-subsurf-4f1a2b3c`.
+Avoid `~/.claude` unless you intentionally pass
+`--allow-shared-claude-config`.
+
+After setup, rerun the live test any time:
+
+```bash
+python -m subsurf.demo
+```
+
+or:
+
+```bash
 subsurf-demo
 ```
 
-That command refreshes/publishes the token, writes `./sample-app`, makes a
-direct Python piggyback call, and makes a gateway piggyback call without any
-manual curl quoting.
-
-Run the guided setup:
-
-```bash
-subsurf-wizard
-```
-
-Recommended explicit wizard test:
-
-```bash
-python -m subsurf.wizard \
-  --account-id default \
-  --label default \
-  --config-dir ~/.claude-subsurf-default \
-  --no-start-daemon \
-  --attach-dir ./sample-app \
-  --overwrite-attach
-```
-
-SubSurf uses an isolated Claude config directory by default. Avoid `~/.claude`
-unless you intentionally pass `--allow-shared-claude-config`.
-
-The wizard walks through:
+The setup flow walks through:
 
 1. Logging into Claude Code in an isolated `CLAUDE_CONFIG_DIR`.
 2. Enrolling that Keychain session into `~/.config/subsurf/cc_accounts.json`.
@@ -175,7 +180,7 @@ Your app should either:
 Generate app-side files:
 
 ```bash
-subsurf-attach --app-dir /path/to/your/app --account-id subsurf1
+subsurf-attach --app-dir /path/to/your/app --account-id "$(cat ~/.config/subsurf/install_id)"
 ```
 
 This writes:
