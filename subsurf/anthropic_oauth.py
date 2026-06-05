@@ -99,7 +99,7 @@ class AnthropicOAuthClient:
                 default_headers=_CC_HEADERS or None,
             )
             self._cached_token = token
-            log.debug("oauth_client_initialized", token_prefix=token[:12])
+            log.debug("oauth_client_initialized")
         return self._client
 
     def reload_token(self) -> None:
