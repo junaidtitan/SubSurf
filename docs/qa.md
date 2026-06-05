@@ -18,11 +18,10 @@ generation, wizard helpers, pool helpers, and the LiteLLM custom provider.
 Run setup once:
 
 ```bash
-python -m subsurf.setup_tui
+python -m subsurf.setup
 ```
 
-Click `Start Setup`. When Claude Code opens, run `/login`, finish browser auth,
-then run `/exit`.
+When Claude Code opens, run `/login`, finish browser auth, then run `/exit`.
 
 Run the foolproof live demo:
 

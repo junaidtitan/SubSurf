@@ -31,7 +31,7 @@ client_id = 9d1c250a-e61b-44d9-88ed-5944d1962f5e
 grant_type = refresh_token
 ```
 
-For wizard/TUI setup, refreshed account state and token files are published
+For setup and wizard flows, refreshed account state and token files are published
 under `~/.config/subsurf/installs/<account-id>/`.
 
 ## 2. Token Files And Pool

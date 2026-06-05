@@ -22,7 +22,7 @@ subsurf/
   litellm_smoke.py        # manual LiteLLM smoke test CLI
   gateway.py              # small local HTTP gateway
   models.py               # Claude model catalog and aliases
-  setup_tui.py            # Textual one-button setup UI
+  setup.py                # plain terminal setup flow
   qa.py                   # local smoke/adversarial QA runner
   throttle.py             # throttle classification, flag/request/grant files
   engine.py               # small runtime wrapper around the OAuth client
@@ -47,10 +47,10 @@ cd SubSurf
 python -m pip install -e '.[dev]'
 ```
 
-Dead-simple setup UI:
+Dead-simple setup:
 
 ```bash
-python -m subsurf.setup_tui
+python -m subsurf.setup
 ```
 
 If SubSurf is installed in editable mode, this is the same as:
@@ -59,10 +59,9 @@ If SubSurf is installed in editable mode, this is the same as:
 subsurf-setup
 ```
 
-Click `Start Setup`. When Claude Code opens in the terminal, run `/login`,
-finish browser auth, then run `/exit`. The UI enrolls the token, starts
-keepalive, writes `./sample-app`, and runs live Python and gateway piggyback
-checks.
+When Claude Code opens in the terminal, run `/login`, finish browser auth, then
+run `/exit`. Setup then enrolls the token, starts keepalive, writes
+`./sample-app`, and runs live Python and gateway piggyback checks.
 
 Terminal-only setup:
 

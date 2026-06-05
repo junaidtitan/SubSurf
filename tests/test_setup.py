@@ -2,24 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
-from subsurf import setup_tui, wizard
+from subsurf import setup, wizard
 
 
-def test_auto_wizard_args_generate_isolated_setup(tmp_path: Path, monkeypatch):
+def test_wizard_args_generate_isolated_setup(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(wizard, "prompt", fail_prompt)
     monkeypatch.setattr(wizard, "prompt_bool", fail_prompt_bool)
 
     install_id_file = tmp_path / "install_id"
-    args = setup_tui.build_parser().parse_args([
+    args = setup.build_parser().parse_args([
         "--install-id-file",
         str(install_id_file),
         "--skip-login",
         "--no-start-daemon",
     ])
 
-    options = wizard.resolve_options(setup_tui.auto_wizard_args(args))
+    options = wizard.resolve_options(setup.wizard_args(args))
 
     assert options.account_id.startswith("subsurf-")
     assert options.label == options.account_id
@@ -32,9 +30,9 @@ def test_auto_wizard_args_generate_isolated_setup(tmp_path: Path, monkeypatch):
     assert install_id_file.read_text().strip() == options.account_id
 
 
-def test_auto_wizard_args_honor_explicit_account_and_no_overwrite(tmp_path: Path):
+def test_wizard_args_honor_explicit_account_and_no_overwrite(tmp_path: Path):
     install_id_file = tmp_path / "install_id"
-    args = setup_tui.build_parser().parse_args([
+    args = setup.build_parser().parse_args([
         "--account-id",
         "work",
         "--install-id-file",
@@ -43,7 +41,7 @@ def test_auto_wizard_args_honor_explicit_account_and_no_overwrite(tmp_path: Path
         "--no-overwrite-attach",
     ])
 
-    options = wizard.resolve_options(setup_tui.auto_wizard_args(args))
+    options = wizard.resolve_options(setup.wizard_args(args))
 
     assert options.account_id == "work"
     assert options.label == "work"
@@ -52,26 +50,27 @@ def test_auto_wizard_args_honor_explicit_account_and_no_overwrite(tmp_path: Path
     assert not install_id_file.exists()
 
 
-def test_capture_collects_output():
-    def emit() -> str:
-        print("hello")
-        return "ok"
+def test_write_sample_app(tmp_path: Path):
+    options = wizard.WizardOptions(
+        account_id="acct",
+        label="acct",
+        config_dir=str(tmp_path / ".claude-subsurf-acct"),
+        token_file=str(tmp_path / "oauth_token"),
+        accounts_file=str(tmp_path / "cc_accounts.json"),
+        pool_file=str(tmp_path / "oauth_pool.json"),
+        interval=60,
+        launch_claude=False,
+        skip_login=True,
+        start_daemon=False,
+        attach_dir=str(tmp_path / "sample-app"),
+        overwrite_attach=True,
+        allow_shared_claude_config=False,
+    )
 
-    captured = setup_tui.capture(emit)
+    setup.write_sample_app(options)
 
-    assert captured.value == "ok"
-    assert captured.output == "hello\n"
-
-
-@pytest.mark.asyncio
-async def test_app_mounts_headlessly_when_textual_is_installed():
-    if setup_tui.TEXTUAL_IMPORT_ERROR is not None:
-        pytest.skip("Textual is not installed")
-
-    app = setup_tui.SubSurfSetupApp(setup_tui.build_parser().parse_args(["--skip-login"]))
-
-    async with app.run_test():
-        assert app.args.skip_login is True
+    assert (tmp_path / "sample-app/.env.subsurf").exists()
+    assert (tmp_path / "sample-app/subsurf_client_example.py").exists()
 
 
 def fail_prompt(default: str, message: str) -> str:

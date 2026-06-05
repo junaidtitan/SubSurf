@@ -1,6 +1,6 @@
 # Wizard Guide
 
-Preferred setup UI:
+Preferred setup:
 
 ```bash
 subsurf-setup
@@ -9,7 +9,7 @@ subsurf-setup
 or:
 
 ```bash
-python -m subsurf.setup_tui
+python -m subsurf.setup
 ```
 
 Terminal-only setup:
@@ -104,9 +104,9 @@ Run:
 subsurf-attach --app-dir /path/to/app
 ```
 
-The setup UI and default wizard already write `./sample-app`. Use
-`subsurf-attach` when you want to attach a different app. It writes
-`.env.subsurf` and Python examples.
+The setup command and default wizard already write `./sample-app`. Use
+`subsurf-attach` when you want to attach a different app. It writes `.env.subsurf`
+and Python examples.
 
 The app-side contract is:
 
