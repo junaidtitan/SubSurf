@@ -40,6 +40,7 @@ class WizardOptions:
     start_daemon: bool
     attach_dir: str | None
     overwrite_attach: bool
+    allow_shared_claude_config: bool
 
 
 def prompt(default: str, message: str) -> str:
@@ -82,11 +83,19 @@ def resolve_options(args: argparse.Namespace) -> WizardOptions:
     label = args.label or prompt(account_id, "Account label/email")
     default_config = str(Path(f"{DEFAULT_CONFIG_ROOT}-{account_id}").expanduser())
     config_dir = args.config_dir or prompt(default_config, "Claude config dir for this login")
+    validate_config_dir(
+        account_id=account_id,
+        config_dir=config_dir,
+        allow_shared=args.allow_shared_claude_config,
+    )
 
-    launch_default = bool(shutil.which("claude")) and not args.skip_login
-    launch_claude = args.launch_claude
-    if launch_claude is None:
-        launch_claude = prompt_bool(launch_default, "Launch Claude for login now")
+    if args.skip_login:
+        launch_claude = False
+    else:
+        launch_default = bool(shutil.which("claude"))
+        launch_claude = args.launch_claude
+        if launch_claude is None:
+            launch_claude = prompt_bool(launch_default, "Launch Claude for login now")
 
     start_daemon = args.start_daemon
     if start_daemon is None:
@@ -109,6 +118,35 @@ def resolve_options(args: argparse.Namespace) -> WizardOptions:
         start_daemon=start_daemon,
         attach_dir=attach_dir,
         overwrite_attach=args.overwrite_attach,
+        allow_shared_claude_config=args.allow_shared_claude_config,
+    )
+
+
+def is_shared_claude_config(config_dir: str) -> bool:
+    return Path(config_dir).expanduser() == Path("~/.claude").expanduser()
+
+
+def validate_options(options: WizardOptions) -> None:
+    validate_config_dir(
+        account_id=options.account_id,
+        config_dir=options.config_dir,
+        allow_shared=options.allow_shared_claude_config,
+    )
+
+
+def validate_config_dir(*, account_id: str, config_dir: str, allow_shared: bool) -> None:
+    if not is_shared_claude_config(config_dir) or allow_shared:
+        return
+    isolated = Path(f"{DEFAULT_CONFIG_ROOT}-{account_id}").expanduser()
+    raise WizardError(
+        "Refusing to use the shared Claude Code config directory `~/.claude`.\n\n"
+        "SubSurf should use an isolated Claude config directory so OAuth "
+        "Keychain entries do not collide with your normal Claude Code session.\n\n"
+        "Use this instead:\n"
+        f"  --config-dir {isolated}\n\n"
+        "Only override this guard if you intentionally want to share the "
+        "normal Claude Code session:\n"
+        "  --allow-shared-claude-config",
     )
 
 
@@ -259,6 +297,7 @@ def run_wizard(args: argparse.Namespace) -> int:
         print("This walks through Claude login, token publishing, keepalive, and app attachment.")
         check_prereqs()
         options = resolve_options(args)
+        validate_options(options)
         run_claude_login(options)
         enroll_and_publish(options)
         start_daemon(options)
@@ -296,6 +335,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pool-file", default=DEFAULT_POOL_FILE)
     parser.add_argument("--interval", type=int, default=60)
     parser.add_argument("--skip-login", action="store_true")
+    parser.add_argument(
+        "--allow-shared-claude-config",
+        action="store_true",
+        help="allow --config-dir ~/.claude instead of an isolated SubSurf config",
+    )
     parser.add_argument("--launch-claude", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--start-daemon", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--attach-dir")

@@ -16,6 +16,10 @@ The wizard asks for:
 - a label, usually an email
 - an isolated Claude config dir, for example `~/.claude-subsurf-subsurf1`
 
+Do not use `~/.claude` for SubSurf setup. SubSurf intentionally uses an
+isolated Claude config directory so Claude Code creates a separate Keychain
+OAuth entry and does not collide with your normal Claude Code session.
+
 It can launch:
 
 ```bash
@@ -24,6 +28,10 @@ CLAUDE_CONFIG_DIR=~/.claude-subsurf-subsurf1 claude
 
 Inside Claude Code, complete `/login`, finish browser auth, then run `/exit`.
 When the Claude process exits, the wizard continues.
+
+If you explicitly pass `--config-dir ~/.claude`, the wizard refuses by default.
+Only use `--allow-shared-claude-config` when you intentionally want to share the
+normal Claude Code session.
 
 ## 2. Enrollment
 

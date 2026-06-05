@@ -23,6 +23,7 @@ def test_daemon_command_uses_bridge_script(tmp_path: Path):
         start_daemon=False,
         attach_dir=None,
         overwrite_attach=False,
+        allow_shared_claude_config=False,
     )
     command = wizard.daemon_command(options)
     assert command[0]
@@ -60,6 +61,7 @@ def test_enroll_and_publish_rolls_back_invalid_grant(tmp_path: Path, monkeypatch
         start_daemon=False,
         attach_dir=None,
         overwrite_attach=False,
+        allow_shared_claude_config=True,
     )
 
     with pytest.raises(wizard.WizardError, match="refresh token is invalid"):
@@ -68,6 +70,98 @@ def test_enroll_and_publish_rolls_back_invalid_grant(tmp_path: Path, monkeypatch
     assert json.loads(accounts_file.read_text()) == {
         "accounts": [{"id": "old", "label": "old"}],
     }
+
+
+def test_validate_options_rejects_shared_claude_config(tmp_path: Path):
+    options = _options(tmp_path, config_dir="~/.claude", allow_shared=False)
+
+    with pytest.raises(wizard.WizardError, match="Refusing to use"):
+        wizard.validate_options(options)
+
+
+def test_validate_options_allows_shared_config_with_explicit_override(tmp_path: Path):
+    options = _options(tmp_path, config_dir="~/.claude", allow_shared=True)
+
+    wizard.validate_options(options)
+
+
+def test_validate_options_allows_isolated_config(tmp_path: Path):
+    options = _options(tmp_path, config_dir="~/.claude-subsurf-default", allow_shared=False)
+
+    wizard.validate_options(options)
+
+
+def test_resolve_options_rejects_shared_config_before_prompts(monkeypatch):
+    monkeypatch.setattr(wizard, "prompt_bool", fail_prompt_bool)
+
+    with pytest.raises(wizard.WizardError, match="Refusing to use"):
+        wizard.resolve_options(_args(config_dir="~/.claude", skip_login=True))
+
+
+def test_resolve_options_skip_login_does_not_prompt_for_launch(monkeypatch):
+    monkeypatch.setattr(wizard, "prompt_bool", fail_prompt_bool)
+
+    options = wizard.resolve_options(
+        _args(
+            config_dir="~/.claude-subsurf-default",
+            skip_login=True,
+            start_daemon=False,
+            attach_dir="./sample-app",
+        ),
+    )
+
+    assert options.launch_claude is False
+
+
+def _options(
+    tmp_path: Path,
+    *,
+    config_dir: str,
+    allow_shared: bool,
+) -> wizard.WizardOptions:
+    return wizard.WizardOptions(
+        account_id="default",
+        label="default",
+        config_dir=config_dir,
+        token_file=str(tmp_path / "oauth_token"),
+        accounts_file=str(tmp_path / "cc_accounts.json"),
+        pool_file=str(tmp_path / "oauth_pool.json"),
+        interval=30,
+        launch_claude=False,
+        skip_login=True,
+        start_daemon=False,
+        attach_dir=None,
+        overwrite_attach=False,
+        allow_shared_claude_config=allow_shared,
+    )
+
+
+def _args(
+    *,
+    config_dir: str,
+    skip_login: bool,
+    start_daemon: bool | None = False,
+    attach_dir: str | None = "./sample-app",
+) -> argparse.Namespace:
+    return argparse.Namespace(
+        account_id="default",
+        label="default",
+        config_dir=config_dir,
+        token_file="~/.config/subsurf/oauth_token",
+        accounts_file="~/.config/subsurf/cc_accounts.json",
+        pool_file="~/.config/subsurf/oauth_pool.json",
+        interval=60,
+        skip_login=skip_login,
+        allow_shared_claude_config=False,
+        launch_claude=None,
+        start_daemon=start_daemon,
+        attach_dir=attach_dir,
+        overwrite_attach=True,
+    )
+
+
+def fail_prompt_bool(default: bool, message: str) -> bool:
+    raise AssertionError(f"unexpected prompt: {message}")
 
 
 class FakeBridge:

@@ -68,6 +68,21 @@ Run the guided setup:
 subsurf-wizard
 ```
 
+Recommended explicit wizard test:
+
+```bash
+python -m subsurf.wizard \
+  --account-id default \
+  --label default \
+  --config-dir ~/.claude-subsurf-default \
+  --no-start-daemon \
+  --attach-dir ./sample-app \
+  --overwrite-attach
+```
+
+SubSurf uses an isolated Claude config directory by default. Avoid `~/.claude`
+unless you intentionally pass `--allow-shared-claude-config`.
+
 The wizard walks through:
 
 1. Logging into Claude Code in an isolated `CLAUDE_CONFIG_DIR`.
