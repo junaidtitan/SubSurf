@@ -1,11 +1,12 @@
 # SubSurf
 
-SubSurf is a standalone extraction of the Claude Code OAuth piggyback path:
+SubSurf is a standalone extraction of local subscription-login piggyback paths:
 
 - Read Claude Code OAuth sessions from macOS Keychain.
 - Keep access tokens fresh with refresh-token rotation.
 - Publish token files for local processes or VM fleets.
 - Call Anthropic with `Authorization: Bearer <OAuth token>`.
+- Run Codex login inside an isolated `CODEX_HOME` for OpenAI/Codex-backed apps.
 - Register as a LiteLLM custom provider named `subsurf`.
 - Serve a small local OpenAI/Anthropic-compatible gateway.
 - Present requests with Claude Code identity headers/system block.
@@ -18,10 +19,13 @@ It is intentionally small and separate from Pilot.
 ```text
 subsurf/
   anthropic_oauth.py      # bearer-token Anthropic client + Claude Code spoof
+  codex_auth.py           # isolated CODEX_HOME login/status/token helpers
   litellm_provider.py     # LiteLLM custom provider for model="subsurf/..."
   litellm_smoke.py        # manual LiteLLM smoke test CLI
   gateway.py              # small local HTTP gateway
   models.py               # Claude model catalog and aliases
+  openai_models.py        # GPT/Codex model catalog and aliases
+  model_discovery.py      # account-scoped model discovery and cache helpers
   setup.py                # plain terminal setup flow
   qa.py                   # local smoke/adversarial QA runner
   throttle.py             # throttle classification, flag/request/grant files
@@ -33,6 +37,7 @@ scripts/
   oauth_pool.py           # host VM token pool and watcher
 docs/
   architecture.md         # end-to-end flow
+  codex-login-provider.md # research and design for isolated Codex login
   gateway.md              # local gateway API
   qa.md                   # unit, smoke, and adversarial QA plan
   wizard.md               # guided setup and app attachment
@@ -47,7 +52,7 @@ cd SubSurf
 python -m pip install -e '.[dev]'
 ```
 
-Run setup:
+Run Claude Code setup:
 
 ```bash
 subsurf-setup
@@ -104,6 +109,78 @@ Safety rules:
 - Avoid `~/.claude` unless you intentionally pass `--allow-shared-claude-config`.
 - Direct bridge commands refuse the normal `~/.claude` Keychain service unless
   explicitly overridden.
+
+## Codex Login Provider
+
+SubSurf can also manage a separate Codex login for apps that should run with a
+SubSurf-owned Codex identity:
+
+```bash
+subsurf-setup --provider codex
+```
+
+or:
+
+```bash
+python -m subsurf.setup --provider codex
+```
+
+The direct wizard supports the same provider split:
+
+```bash
+subsurf-wizard --provider claude
+subsurf-wizard --provider codex
+```
+
+This creates:
+
+```text
+~/.config/subsurf/installs/<account-id>/codex_home/
+~/.config/subsurf/installs/<account-id>/codex_home/config.toml
+~/.config/subsurf/installs/<account-id>/codex_home/auth.json
+```
+
+The generated Codex config forces:
+
+```toml
+cli_auth_credentials_store = "file"
+```
+
+That keeps credentials inside the isolated `CODEX_HOME` instead of using the
+user's normal `~/.codex` or keyring-backed Codex session.
+
+Useful commands:
+
+```bash
+subsurf-codex login
+subsurf-codex login --device-auth
+subsurf-codex models --aliases
+subsurf-codex status
+subsurf-codex env
+subsurf-codex token
+subsurf-codex attach --app-dir /path/to/app
+```
+
+Default Codex model selection starts at `gpt-5.5`, then setup tries to discover
+the models available to the isolated account. If no explicit model was requested,
+SubSurf rewrites the isolated Codex config to a discovered account-available
+model when needed. You can still choose known aliases or any explicit model id:
+
+```bash
+subsurf-setup --provider codex --codex-model gpt-5.4-mini
+subsurf-setup --provider codex --codex-model codex
+subsurf-codex prepare --model gpt-5.5-pro
+```
+
+The local selector is only a fallback and alias layer. Run
+`subsurf-codex models --live` after login to query models available to that
+isolated account. `subsurf-codex models --aliases` shows offline aliases such
+as `codex`, `spark`, `chat`, `mini`, and `latest`.
+
+Codex supports ChatGPT login, API-key login, and Codex access-token login. These
+are not the same credential type. `subsurf-codex token` prints the stored
+credential explicitly for trusted code, but SubSurf does not relabel a Codex
+ChatGPT token as an OpenAI Platform API key.
 
 Advanced/manual wizard:
 
@@ -174,6 +251,8 @@ Default setup token and IPC files live under
 
 ## Attaching Another App
 
+### Claude/Anthropic Apps
+
 The app does not own refresh. SubSurf owns refresh and keeps a token file current.
 Your app should either:
 
@@ -200,4 +279,29 @@ The key contract:
 ```text
 subsurf-bridge / subsurf-wizard keepalive -> refreshed token file
 your app -> reads SUBSURF_OAUTH_TOKEN_PATH -> sends Bearer auth
+```
+
+### Codex/OpenAI Apps
+
+Run:
+
+```bash
+subsurf-codex attach --app-dir /path/to/your/app
+```
+
+This writes:
+
+- `.env.subsurf.codex` with `SUBSURF_CODEX_HOME`, `SUBSURF_CODEX_AUTH_FILE`,
+  `SUBSURF_CODEX_TOKEN_COMMAND`, and `CODEX_HOME`.
+- `subsurf_codex_cli_example.py` showing how to run Codex with the isolated
+  home.
+- `subsurf_codex_token_example.py` showing explicit token retrieval without
+  printing the secret.
+
+The key contract:
+
+```text
+SubSurf owns isolated CODEX_HOME
+Codex login writes auth.json there
+your app runs Codex or token-aware code with CODEX_HOME pointing there
 ```

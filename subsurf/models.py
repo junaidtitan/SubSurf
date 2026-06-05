@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Literal
 
 
@@ -164,7 +165,7 @@ def model_ids(*, include_aliases: bool = False, provider_prefix: str = "") -> li
     return out
 
 
-def openai_model_entries() -> list[dict[str, object]]:
+def static_openai_model_entries() -> list[dict[str, object]]:
     return [
         {
             "id": model_id,
@@ -176,15 +177,60 @@ def openai_model_entries() -> list[dict[str, object]]:
     ]
 
 
+def openai_model_entries(
+    *,
+    token_path: str | Path | None = None,
+    cache_file: str | Path | None = None,
+) -> list[dict[str, object]]:
+    static_entries = static_openai_model_entries()
+    if token_path is None:
+        return static_entries
+
+    from subsurf import model_discovery
+
+    cache = cache_file or Path(token_path).expanduser().parent / "claude_models.json"
+    try:
+        discovered = model_discovery.discover_anthropic_models(
+            token_path,
+            cache_file=cache,
+        )
+    except Exception:
+        try:
+            discovered = model_discovery.read_model_cache(cache)
+        except Exception:
+            discovered = []
+
+    if not discovered:
+        return static_entries
+
+    dynamic_entries = model_discovery.openai_entries(discovered, prefix="subsurf/")
+    return model_discovery.merge_model_entries(dynamic_entries, static_entries)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="List SubSurf Claude model aliases")
     parser.add_argument("--json", action="store_true", help="emit JSON")
+    parser.add_argument("--live", action="store_true", help="query models available to this token")
+    parser.add_argument("--token-file", default="~/.config/subsurf/oauth_token")
+    parser.add_argument("--cache-file")
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
     rows = [asdict(model) for model in CLAUDE_MODELS]
+    if args.live:
+        entries = openai_model_entries(
+            token_path=args.token_file,
+            cache_file=args.cache_file,
+        )
+        if args.json:
+            print(json.dumps({"object": "list", "data": entries}, indent=2))
+        else:
+            for entry in entries:
+                print(entry["id"])
+        return 0
+
     if args.json:
         print(json.dumps(rows, indent=2))
         return 0

@@ -244,6 +244,140 @@ def test_run_claude_login_rejects_shared_config_even_when_called_directly(tmp_pa
         wizard.run_claude_login(options)
 
 
+def test_run_wizard_codex_provider_skip_login(tmp_path: Path):
+    args = wizard.build_parser().parse_args([
+        "--provider",
+        "codex",
+        "--account-id",
+        "acct",
+        "--codex-home",
+        str(tmp_path / "codex_home"),
+        "--codex-model",
+        "codex",
+        "--skip-login",
+        "--attach-dir",
+        str(tmp_path / "app"),
+    ])
+
+    assert wizard.run_wizard(args) == 0
+
+    assert (tmp_path / "codex_home/config.toml").read_text() == (
+        'model = "gpt-5.3-codex"\n\ncli_auth_credentials_store = "file"\n'
+    )
+    assert (tmp_path / "app/.env.subsurf.codex").exists()
+
+
+def test_run_wizard_manual_provider_prompt_can_choose_codex(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(wizard, "prompt_provider", lambda: "codex")
+    args = wizard.build_parser().parse_args([
+        "--manual",
+        "--account-id",
+        "acct",
+        "--codex-home",
+        str(tmp_path / "codex_home"),
+        "--codex-model",
+        "mini",
+        "--skip-login",
+        "--attach-dir",
+        str(tmp_path / "app"),
+    ])
+
+    assert wizard.run_wizard(args) == 0
+
+    assert (tmp_path / "codex_home/config.toml").read_text() == (
+        'model = "gpt-5.4-mini"\n\ncli_auth_credentials_store = "file"\n'
+    )
+    assert (tmp_path / "app/.env.subsurf.codex").exists()
+
+
+def test_should_launch_clear_screen_for_bare_tty():
+    args = wizard.build_parser().parse_args([])
+
+    assert wizard.should_launch_clear_screen(
+        args,
+        stdin=FakeStream(is_tty=True),
+        stdout=FakeStream(is_tty=True),
+    )
+
+
+def test_should_not_launch_clear_screen_for_explicit_provider():
+    args = wizard.build_parser().parse_args(["--provider", "codex"])
+
+    assert not wizard.should_launch_clear_screen(
+        args,
+        stdin=FakeStream(is_tty=True),
+        stdout=FakeStream(is_tty=True),
+    )
+
+
+def test_should_not_launch_clear_screen_when_disabled():
+    args = wizard.build_parser().parse_args(["--no-clear-screen"])
+
+    assert not wizard.should_launch_clear_screen(
+        args,
+        stdin=FakeStream(is_tty=True),
+        stdout=FakeStream(is_tty=True),
+    )
+
+
+def test_no_fullscreen_alias_disables_clear_screen():
+    args = wizard.build_parser().parse_args(["--no-fullscreen"])
+
+    assert not wizard.should_launch_clear_screen(
+        args,
+        stdin=FakeStream(is_tty=True),
+        stdout=FakeStream(is_tty=True),
+    )
+
+
+def test_run_clear_screen_wizard_passes_selected_provider(monkeypatch):
+    captured = {}
+
+    def fake_run_wizard(args: argparse.Namespace) -> int:
+        captured["provider"] = args.provider
+        captured["manual"] = args.manual
+        return 0
+
+    monkeypatch.setattr(wizard, "cleared_screen_onboarding", lambda: "codex")
+    monkeypatch.setattr(wizard, "run_wizard", fake_run_wizard)
+
+    args = wizard.build_parser().parse_args([])
+
+    assert wizard.run_clear_screen_wizard(args) == 0
+    assert captured == {"provider": "codex", "manual": False}
+
+
+def test_cleared_screen_onboarding_can_choose_codex(monkeypatch):
+    answers = iter(["", "2", ""])
+
+    monkeypatch.setattr("builtins.input", lambda message: next(answers))
+    monkeypatch.setattr(wizard, "write_screen", lambda lines: None)
+
+    assert wizard.cleared_screen_onboarding() == "codex"
+
+
+def test_run_clear_screen_wizard_handles_eof(monkeypatch):
+    monkeypatch.setattr(wizard, "cleared_screen_onboarding", lambda: (_ for _ in ()).throw(EOFError))
+
+    args = wizard.build_parser().parse_args([])
+
+    assert wizard.run_clear_screen_wizard(args) == 130
+
+
+def test_main_uses_clear_screen_for_bare_tty(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(
+        wizard,
+        "should_launch_clear_screen",
+        lambda args: args.provider is None and not args.no_clear_screen,
+    )
+    monkeypatch.setattr(wizard, "run_clear_screen_wizard", lambda args: calls.append(args) or 0)
+
+    assert wizard.main([]) == 0
+    assert len(calls) == 1
+
+
 def test_running_pid_from_file_handles_stale_pid(tmp_path: Path):
     pid_file = tmp_path / "pid"
     pid_file.write_text("999999999")
@@ -312,6 +446,14 @@ def fail_prompt_bool(default: bool, message: str) -> bool:
 
 def fail_prompt(default: str, message: str) -> str:
     raise AssertionError(f"unexpected prompt: {message}")
+
+
+class FakeStream:
+    def __init__(self, *, is_tty: bool):
+        self.is_tty = is_tty
+
+    def isatty(self) -> bool:
+        return self.is_tty
 
 
 class FakeBridge:

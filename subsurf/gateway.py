@@ -78,7 +78,10 @@ def create_app(
         x_subsurf_token: str | None = Header(default=None, alias="X-SubSurf-Token"),
     ) -> dict[str, object]:
         _require_auth(cfg, authorization, x_subsurf_token)
-        return {"object": "list", "data": openai_model_entries()}
+        return {
+            "object": "list",
+            "data": openai_model_entries(token_path=cfg.oauth_token_path),
+        }
 
     @app.post("/v1/chat/completions")
     async def chat_completions(

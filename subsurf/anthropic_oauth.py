@@ -33,6 +33,15 @@ _SPOOF_ON = _SPOOF_ENV.lower() not in {"0", "false", ""}
 _CC_HEADERS = {"anthropic-beta": _CC_BETA, "User-Agent": _CC_UA} if _SPOOF_ON else {}
 
 
+def anthropic_oauth_headers(token: str) -> dict[str, str]:
+    """Headers for Anthropic endpoints using Claude Code OAuth bearer auth."""
+    return {
+        "Authorization": f"Bearer {token}",
+        "anthropic-version": "2023-06-01",
+        **_CC_HEADERS,
+    }
+
+
 def _with_cc_identity(system_prompt: str | None) -> Any:
     """Return a system value whose first block is the Claude Code identity."""
     if not _SPOOF_ON:

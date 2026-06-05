@@ -1,6 +1,8 @@
 # Architecture
 
-SubSurf has three layers.
+SubSurf has separate provider paths for Claude Code and Codex/OpenAI-backed
+apps. The Claude path publishes Anthropic bearer tokens. The Codex path owns an
+isolated Codex home and lets apps run against that home.
 
 ## 1. Claude Code Session Bridge
 
@@ -145,6 +147,78 @@ haiku  -> claude-haiku-4-5-20251001
 
 It also passes through unknown full model IDs, so newly available Claude models
 can be tested before the local catalog is updated.
+
+## 6. Codex Login Provider
+
+`subsurf.codex_auth` manages Codex as its own login provider. It uses Codex's
+supported isolation boundary:
+
+```text
+CODEX_HOME
+```
+
+SubSurf creates this per install:
+
+```text
+~/.config/subsurf/installs/<account-id>/codex_home/
+```
+
+and writes:
+
+```toml
+cli_auth_credentials_store = "file"
+```
+
+to:
+
+```text
+~/.config/subsurf/installs/<account-id>/codex_home/config.toml
+```
+
+That forces Codex credentials into:
+
+```text
+~/.config/subsurf/installs/<account-id>/codex_home/auth.json
+```
+
+instead of the normal `~/.codex` home or keyring-backed default session.
+
+The implementation is based on the current Codex source:
+
+- `CODEX_HOME` controls config/state root.
+- `cli_auth_credentials_store = "file"` stores credentials in `auth.json`.
+- `auth.json` can represent API-key auth, ChatGPT OAuth tokens, or agent
+  identity access-token auth.
+- `codex login` supports browser login, device auth, API key via stdin, and
+  access token via stdin.
+
+SubSurf exposes:
+
+```bash
+subsurf-codex login
+subsurf-codex login --device-auth
+subsurf-codex models --aliases
+subsurf-codex status
+subsurf-codex token
+subsurf-codex attach --app-dir /path/to/app
+```
+
+Model selection is written into the isolated Codex config:
+
+```toml
+model = "gpt-5.5"
+cli_auth_credentials_store = "file"
+```
+
+`subsurf.model_discovery` handles account-scoped model discovery and cache
+fallback. API-key Codex auth uses OpenAI's `/v1/models` route. ChatGPT/Codex
+auth uses Codex's ChatGPT backend model route. The offline catalog in
+`subsurf.openai_models` is only an alias/fallback layer, and explicit ids still
+pass through so new model access is not blocked by the local catalog.
+
+The Codex provider does not convert Codex/ChatGPT tokens into Claude tokens, and
+it does not claim a ChatGPT access token is an OpenAI Platform API key. Apps
+must use the credential with the matching OpenAI/Codex surface.
 
 ## Throttle And Recovery
 

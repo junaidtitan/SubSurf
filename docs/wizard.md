@@ -18,6 +18,19 @@ Terminal-only setup:
 subsurf-wizard
 ```
 
+Codex-provider setup:
+
+```bash
+subsurf-setup --provider codex
+```
+
+The direct wizard accepts the same provider choice:
+
+```bash
+subsurf-wizard --provider claude
+subsurf-wizard --provider codex
+```
+
 The setup moves through the flow in order and avoids naming collisions by
 generating a stable account id like `subsurf-4f1a2b3c`. That id is stored in:
 
@@ -154,3 +167,74 @@ response = litellm.completion(
 
 For OAuth piggyback robustness, preserve the Claude Code identity headers and
 first system block shown in `subsurf_direct_anthropic_example.py`.
+
+## Codex Login Provider
+
+The Codex path is separate from the Claude path. It is for apps that should use
+Codex/OpenAI-backed auth, not Claude/Anthropic auth.
+
+Run:
+
+```bash
+subsurf-setup --provider codex
+```
+
+By default, SubSurf creates a per-install Codex home:
+
+```text
+~/.config/subsurf/installs/subsurf-4f1a2b3c/codex_home/
+```
+
+and writes:
+
+```toml
+cli_auth_credentials_store = "file"
+```
+
+to that home's `config.toml`. This is the guard that prevents the setup from
+using your normal `~/.codex` or keyring-backed Codex session.
+
+Useful lower-level commands:
+
+```bash
+subsurf-codex prepare
+subsurf-codex login
+subsurf-codex login --device-auth
+subsurf-codex models --aliases
+subsurf-codex status
+subsurf-codex env
+subsurf-codex token
+subsurf-codex attach --app-dir /path/to/app
+```
+
+Default model selection starts at `gpt-5.5`, then setup tries to discover the
+models available to the isolated account. If you did not request a model
+explicitly, SubSurf rewrites the isolated Codex config to a discovered
+account-available model when needed. Pick a model during setup:
+
+```bash
+subsurf-setup --provider codex --codex-model gpt-5.4-mini
+subsurf-setup --provider codex --codex-model codex
+subsurf-wizard --provider codex --codex-model gpt-5.5-pro
+```
+
+After login, run `subsurf-codex models --live` to query models available to that
+isolated account. Known offline aliases are listed by
+`subsurf-codex models --aliases`. Explicit model IDs pass through, so a newly
+available model can be used even before SubSurf's fallback alias catalog is
+updated.
+
+If an app needs to run Codex, set:
+
+```bash
+export CODEX_HOME=~/.config/subsurf/installs/<account-id>/codex_home
+```
+
+or load the generated `.env.subsurf.codex` file.
+
+Safety rule:
+
+```text
+Do not use ~/.codex for SubSurf Codex setup unless you intentionally pass
+--allow-shared-codex-home.
+```

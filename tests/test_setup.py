@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from subsurf import setup, wizard
+from subsurf import codex_auth, setup, wizard
 
 
 def test_wizard_args_generate_isolated_setup(tmp_path: Path, monkeypatch):
@@ -71,6 +71,100 @@ def test_write_sample_app(tmp_path: Path):
 
     assert (tmp_path / "sample-app/.env.subsurf").exists()
     assert (tmp_path / "sample-app/subsurf_client_example.py").exists()
+
+
+def test_codex_setup_skip_login_prepares_isolated_home(tmp_path: Path):
+    install_id_file = tmp_path / "install_id"
+    codex_home = tmp_path / "codex_home"
+    args = setup.build_parser().parse_args([
+        "--provider",
+        "codex",
+        "--install-id-file",
+        str(install_id_file),
+        "--codex-home",
+        str(codex_home),
+        "--app-dir",
+        str(tmp_path / "app"),
+        "--codex-model",
+        "mini",
+        "--skip-login",
+        "--no-live-checks",
+    ])
+
+    assert setup.run_setup(args) == 0
+
+    account_id = install_id_file.read_text().strip()
+    assert account_id.startswith("subsurf-")
+    assert (codex_home / "config.toml").read_text() == (
+        'model = "gpt-5.4-mini"\n\ncli_auth_credentials_store = "file"\n'
+    )
+    assert (tmp_path / "app/.env.subsurf.codex").exists()
+    env_text = (tmp_path / "app/.env.subsurf.codex").read_text()
+    assert f"--account-id {account_id}" in env_text
+    assert f"--codex-home {codex_home}" in env_text
+
+
+def test_codex_setup_rejects_shared_codex_home(tmp_path: Path):
+    args = setup.build_parser().parse_args([
+        "--provider",
+        "codex",
+        "--account-id",
+        "acct",
+        "--codex-home",
+        "~/.codex",
+        "--skip-login",
+    ])
+
+    try:
+        setup.run_setup(args)
+    except codex_auth.CodexAuthError as exc:
+        assert "Refusing to use" in str(exc)
+    else:
+        raise AssertionError("expected shared CODEX_HOME rejection")
+
+
+def test_refresh_codex_model_selection_prefers_discovered_default(tmp_path: Path, monkeypatch):
+    paths = codex_auth.paths_for_account("acct", codex_home=tmp_path / "codex_home")
+    codex_auth.ensure_codex_home(paths, model="gpt-5.5")
+
+    monkeypatch.setattr(
+        setup.codex_auth,
+        "discover_models",
+        lambda paths: [
+            codex_auth.model_discovery.DiscoveredModel(id="gpt-5.4-mini"),
+            codex_auth.model_discovery.DiscoveredModel(id="gpt-5.3-codex"),
+        ],
+    )
+
+    selected = setup.refresh_codex_model_selection(
+        paths,
+        requested_model=None,
+        current_model="gpt-5.5",
+        allow_shared=False,
+    )
+
+    assert selected == "gpt-5.3-codex"
+    assert 'model = "gpt-5.3-codex"' in paths.config_file.read_text()
+
+
+def test_refresh_codex_model_selection_keeps_explicit_model(tmp_path: Path, monkeypatch):
+    paths = codex_auth.paths_for_account("acct", codex_home=tmp_path / "codex_home")
+    codex_auth.ensure_codex_home(paths, model="gpt-5.5")
+
+    monkeypatch.setattr(
+        setup.codex_auth,
+        "discover_models",
+        lambda paths: [codex_auth.model_discovery.DiscoveredModel(id="gpt-5.4-mini")],
+    )
+
+    selected = setup.refresh_codex_model_selection(
+        paths,
+        requested_model="gpt-explicit",
+        current_model="gpt-explicit",
+        allow_shared=False,
+    )
+
+    assert selected == "gpt-explicit"
 
 
 def fail_prompt(default: str, message: str) -> str:

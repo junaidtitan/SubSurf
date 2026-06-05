@@ -30,10 +30,12 @@ dev = [
 [project.scripts]
 subsurf-attach = "subsurf.attach:main"
 subsurf-bridge = "scripts.cc_session_bridge:main"
+subsurf-codex = "subsurf.codex_auth:main"
 subsurf-demo = "subsurf.demo:main"
 subsurf-gateway = "subsurf.gateway:main"
 subsurf-litellm-smoke = "subsurf.litellm_smoke:main"
 subsurf-models = "subsurf.models:main"
+subsurf-openai-models = "subsurf.openai_models:main"
 subsurf-pool = "scripts.oauth_pool:main"
 subsurf-qa = "subsurf.qa:main"
 subsurf-setup = "subsurf.setup:main"

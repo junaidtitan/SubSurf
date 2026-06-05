@@ -12,10 +12,13 @@ from pathlib import Path
 
 from subsurf import demo, wizard
 from subsurf.attach import build_attach_plan, write_attach_files
+from subsurf import codex_auth
+from subsurf.openai_models import DEFAULT_CODEX_MODEL, choose_available_model, resolve_model_id
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the SubSurf setup flow")
+    parser.add_argument("--provider", choices=("claude", "codex"), default="claude")
     parser.add_argument("--account-id")
     parser.add_argument("--app-dir", default=wizard.DEFAULT_ATTACH_DIR)
     parser.add_argument("--no-start-daemon", action="store_true")
@@ -23,6 +26,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-live-checks", action="store_true")
     parser.add_argument("--no-overwrite-attach", action="store_true")
     parser.add_argument("--model", default="sonnet")
+    parser.add_argument("--codex-home")
+    parser.add_argument("--codex-device-auth", action="store_true")
+    parser.add_argument("--codex-with-api-key", action="store_true")
+    parser.add_argument("--codex-with-access-token", action="store_true")
+    parser.add_argument("--codex-model")
+    parser.add_argument(
+        "--allow-shared-codex-home",
+        action="store_true",
+        help="allow using ~/.codex for Codex-provider setup",
+    )
     parser.add_argument("--install-id-file", default=wizard.DEFAULT_INSTALL_ID_FILE, help=argparse.SUPPRESS)
     return parser
 
@@ -52,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return run_setup(args)
-    except wizard.WizardError as exc:
+    except (wizard.WizardError, codex_auth.CodexAuthError) as exc:
         print()
         print("Setup stopped")
         print("-------------")
@@ -61,6 +74,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_setup(args: argparse.Namespace) -> int:
+    if args.provider == "codex":
+        return run_codex_setup(args)
+
     print("SubSurf setup")
     print("=============")
     print("This uses an isolated Claude Code config and per-install token files.")
@@ -199,6 +215,122 @@ def run_live_checks(options: wizard.WizardOptions, *, model: str) -> None:
     )
     reply = payload["choices"][0]["message"]["content"].strip()
     print(f"Gateway piggyback: OK ({reply})")
+
+
+def run_codex_setup(args: argparse.Namespace) -> int:
+    print("SubSurf Codex setup")
+    print("===================")
+    print("This uses an isolated CODEX_HOME and file-based Codex credential storage.")
+    print("It does not touch your normal ~/.codex unless explicitly allowed.")
+
+    step(1, "Preflight")
+    account_id = codex_auth.resolve_account_id(
+        args.account_id,
+        install_id_file=args.install_id_file,
+        create=True,
+    )
+    assert account_id is not None
+    paths = codex_auth.paths_for_account(account_id, codex_home=args.codex_home)
+    codex_auth.validate_codex_home(paths, allow_shared=args.allow_shared_codex_home)
+    print(f"Codex CLI:  {shutil.which('codex') or 'not found'}")
+    print(f"Account id: {paths.account_id}")
+    print(f"CODEX_HOME: {paths.codex_home}")
+    print(f"Auth file:  {paths.auth_file}")
+    if not args.skip_login and not shutil.which("codex"):
+        raise wizard.WizardError("Codex CLI was not found on PATH.")
+
+    step(2, "Prepare isolated Codex home")
+    requested_codex_model = args.codex_model or DEFAULT_CODEX_MODEL
+    codex_model = resolve_model_id(requested_codex_model)
+    codex_auth.ensure_codex_home(
+        paths,
+        allow_shared=args.allow_shared_codex_home,
+        model=codex_model,
+    )
+    print(f"wrote {paths.config_file}")
+    print(f"Codex model: {codex_model}")
+
+    step(3, "Codex login")
+    if args.skip_login:
+        print("Skipped because --skip-login was set.")
+    else:
+        login_args = argparse.Namespace(
+            device_auth=args.codex_device_auth,
+            with_api_key=args.codex_with_api_key,
+            with_access_token=args.codex_with_access_token,
+            model=codex_model,
+            print_command=False,
+            allow_shared_codex_home=args.allow_shared_codex_home,
+        )
+        rc = codex_auth.run_codex_login(paths, login_args)
+        if rc != 0:
+            raise wizard.WizardError(f"codex login exited with status {rc}")
+
+    step(4, "Discover available Codex models")
+    codex_model = refresh_codex_model_selection(
+        paths,
+        requested_model=args.codex_model,
+        current_model=codex_model,
+        allow_shared=args.allow_shared_codex_home,
+    )
+
+    step(5, "Write app attachment")
+    plan = codex_auth.build_attach_plan(
+        args.app_dir,
+        paths,
+        write_examples=True,
+    )
+    written = codex_auth.write_attach_files(plan, overwrite=not args.no_overwrite_attach)
+    for path in written:
+        print(f"wrote {path}")
+    codex_auth.print_attach_instructions(paths, app_dir=args.app_dir)
+
+    step(6, "Status")
+    codex_auth.print_status(paths, codex_auth.summarize_auth(codex_auth.load_auth_json(paths)))
+
+    if not args.no_live_checks:
+        print()
+        print("Live checks")
+        print("-----------")
+        print("Run a Codex command through the isolated home when you are ready:")
+        print(f"  CODEX_HOME={paths.codex_home} codex login status")
+
+    print()
+    print("Done")
+    print("====")
+    print("SubSurf Codex login is ready for apps that run with the isolated CODEX_HOME.")
+    return 0
+
+
+def refresh_codex_model_selection(
+    paths: codex_auth.CodexPaths,
+    *,
+    requested_model: str | None,
+    current_model: str,
+    allow_shared: bool,
+) -> str:
+    try:
+        models = codex_auth.discover_models(paths)
+    except (codex_auth.CodexAuthError, codex_auth.model_discovery.ModelDiscoveryError) as exc:
+        print(f"Live model discovery unavailable: {exc}")
+        print(f"Using configured Codex model: {current_model}")
+        return current_model
+
+    available_ids = [model.id for model in models]
+    print(f"Discovered {len(available_ids)} account model(s).")
+    if requested_model:
+        selected = choose_available_model(available_ids, requested=requested_model)
+        if selected not in set(available_ids):
+            print(f"Warning: requested model {selected} was not in the discovered account list.")
+        return selected
+
+    selected = choose_available_model(available_ids)
+    if selected != current_model:
+        codex_auth.ensure_codex_home(paths, allow_shared=allow_shared, model=selected)
+        print(f"Updated Codex model from {current_model} to account-available {selected}.")
+    else:
+        print(f"Using account-available Codex model: {selected}")
+    return selected
 
 
 if __name__ == "__main__":

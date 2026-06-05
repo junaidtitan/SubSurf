@@ -77,16 +77,17 @@ sonnet -> claude-sonnet-4-6
 haiku  -> claude-haiku-4-5-20251001
 ```
 
-It also lists known full Haiku, Sonnet, and Opus model IDs through
-`/v1/models`. Unknown full model IDs pass through to Anthropic so newly
-available Claude models do not require a SubSurf release before you can try
-them.
+`/v1/models` tries account-scoped Claude model discovery with the configured
+SubSurf OAuth token and falls back to the offline alias catalog if discovery is
+unavailable. Unknown full model IDs pass through to Anthropic so newly available
+Claude models do not require a SubSurf release before you can try them.
 
 List the local catalog:
 
 ```bash
 subsurf-models
 subsurf-models --json
+subsurf-models --live
 ```
 
 ## Unsupported Today

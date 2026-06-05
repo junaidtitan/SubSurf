@@ -1,4 +1,4 @@
-"""SubSurf: Claude Code OAuth piggyback and token-pool utilities."""
+"""SubSurf: Claude Code and Codex login piggyback utilities."""
 
 from __future__ import annotations
 
