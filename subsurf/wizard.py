@@ -22,6 +22,10 @@ DEFAULT_LOG_FILE = "~/.config/subsurf/subsurf_bridge.log"
 DEFAULT_PID_FILE = "~/.config/subsurf/subsurf_bridge.pid"
 
 
+class WizardError(RuntimeError):
+    """Recoverable wizard error shown without a Python traceback."""
+
+
 @dataclass
 class WizardOptions:
     account_id: str
@@ -113,7 +117,8 @@ def run_claude_login(options: WizardOptions) -> None:
     print("A Claude Code session will open with this isolated config directory:")
     print(f"  CLAUDE_CONFIG_DIR={Path(options.config_dir).expanduser()}")
     print()
-    print("Inside Claude Code, run `/login` if needed, finish browser auth, then `/exit`.")
+    print("Inside Claude Code, run `/login`, finish browser auth, then run `/exit`.")
+    print("If refresh later fails with invalid_grant, run `/login` again before `/exit`.")
     if options.skip_login:
         print("Skipping launch because --skip-login was provided.")
         input("Press Enter after you have already logged in and exited Claude...")
@@ -136,6 +141,7 @@ def enroll_and_publish(options: WizardOptions) -> None:
     bridge = bridge_module()
     service = bridge.keychain_service_for_config_dir(options.config_dir)
     account = bridge.DEFAULT_ACCOUNT
+    prior_accounts = bridge.load_accounts(options.accounts_file)
 
     enroll_args = argparse.Namespace(
         service=service,
@@ -156,7 +162,21 @@ def enroll_and_publish(options: WizardOptions) -> None:
         force_refresh=False,
         push=False,
     )
-    bridge.tick(tick_args)
+    try:
+        bridge.tick(tick_args)
+    except RuntimeError as exc:
+        bridge.save_accounts(options.accounts_file, prior_accounts)
+        if "invalid_grant" in str(exc):
+            raise WizardError(
+                "Claude Code's saved refresh token is invalid.\n\n"
+                "Recovery:\n"
+                f"  1. Re-run this wizard for account `{options.account_id}`.\n"
+                "  2. When Claude Code opens, run `/login` and complete browser auth.\n"
+                "  3. Then run `/exit` and let the wizard continue.\n\n"
+                "The broken enrollment was rolled back; no token was published from "
+                "that invalid refresh token.",
+            ) from exc
+        raise
 
     token_path = Path(f"{options.token_file}_{options.account_id}").expanduser()
     print(f"Token file ready: {token_path}")
@@ -234,17 +254,25 @@ def attach_app(options: WizardOptions) -> None:
 
 
 def run_wizard(args: argparse.Namespace) -> int:
-    heading("SubSurf Setup Wizard")
-    print("This walks through Claude login, token publishing, keepalive, and app attachment.")
-    check_prereqs()
-    options = resolve_options(args)
-    run_claude_login(options)
-    enroll_and_publish(options)
-    start_daemon(options)
-    attach_app(options)
-    heading("Done")
-    print("SubSurf is ready. Your app should read SUBSURF_OAUTH_TOKEN_PATH and keep the daemon running.")
-    return 0
+    try:
+        heading("SubSurf Setup Wizard")
+        print("This walks through Claude login, token publishing, keepalive, and app attachment.")
+        check_prereqs()
+        options = resolve_options(args)
+        run_claude_login(options)
+        enroll_and_publish(options)
+        start_daemon(options)
+        attach_app(options)
+        heading("Done")
+        print(
+            "SubSurf is ready. Your app should read SUBSURF_OAUTH_TOKEN_PATH "
+            "and keep the daemon running.",
+        )
+        return 0
+    except WizardError as exc:
+        heading("Setup Needs Attention")
+        print(str(exc))
+        return 2
 
 
 def status(args: argparse.Namespace) -> int:
